@@ -1,0 +1,52 @@
+<h3 style="float: left;">Schema Design</h3>
+
+<% var collapse = view.collapsed == true ? 'hidden ' : ''; %>
+<% var expand = view.collapsed != true ? 'hidden ' : ''; %>
+
+<button style="float: left; margin-left: 4px; margin-top: 20px" name="collapse" class="<%=collapse%>glyphicon glyphicon-chevron-up"></button>
+<button style="float: left; margin-left: 4px; margin-top: 20px" name="expand" class="<%=expand%>glyphicon glyphicon-chevron-down"></button>
+
+<div class="clearfix"></div>
+<form class="<%=collapse%>">
+    <% var schema = view.collection.toSchema() %>
+    <% var readonly = view.locked == true ? 'readonly="true" ' : ''; %>
+    <% var disabled = view.locked == true ? 'disabled="true" ' : ''; %>
+    <% var cls = view.invalid == true ? ' has-warning' : ''; %>
+    <% var locked = view.locked == true ? ' locked' : ''; %>
+    <div class="form-group form-collection-admin<%=locked%>">
+        <div style="float: left; width: 40px;">
+            <button name="save" title="Save Schema" class="pull-left glyphicon glyphicon-save"></button>
+            <div class="clearfix"></div>
+            <button name="" title="" class="glyphicon glyphicon-filter"></button>
+        </div>
+
+        <div style="margin-left: 40px;">
+            <div class="form-label">
+                <label name="collection.label" class="control-label pull-left"><%=view.collection.label%></label>
+                <textarea name="collection.label" class="hidden"><%=view.collection.label%></textarea>
+            </div>
+            <div class="clearfix"></div>
+            <div class="pull-left">
+        <% _.each(schema, function(point) { %>
+          <% if (point.type=='bool') { %>
+            <button <%=disabled%>type="button" name="<%=point.id%>" class="btn"><%=point.label%></button>
+          <% } %>
+        <% }); %>
+        </div>
+    </div>
+
+
+    <div class="clearfix"></div>
+    <% _.each(schema, function(point) { %>
+      <% if (point.type=='str') { %>
+        <div class="form-group">
+            <div style="float: left; width: 40px;"></div>
+            <div style="margin-left: 40px;">
+                <label><%=point.label%></label>
+                <textarea <%=disabled%>name="<%=point.id%>" class="form-control"></textarea>
+            </div>
+        </div>
+      <% } %>
+    <% }); %>
+
+</form>

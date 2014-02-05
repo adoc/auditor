@@ -1,0 +1,28 @@
+<h3>Schema Preview</h3>
+<form>
+    <% var model = view.collection.toModel() %>
+    <% var readonly = view.locked == true ? 'readonly="true" ' : ''; %>
+    <% var disabled = view.locked == true ? 'disabled="true" ' : ''; %>
+    <% var cls = view.invalid == true ? ' has-warning' : ''; %>
+    <% var locked = view.locked == true ? ' locked' : ''; %>
+    <div class="form-collection form-group<%=locked%>">
+        <button <%=disabled%>name="lock" class="pull-left glyphicon glyphicon-lock"></button>
+        <label class="control-label pull-left" ><%=view.collection.label%></label>
+        <div class="pull-right">
+    <% _.each(model.schema, function(point) { %>
+      <% if (point.type=='bool') { %>
+        <% var cls = model.get(point.id) == true ? ' btn-primary' : ' btn-default'; %>
+        <button <%=disabled%>type="button" name="<%=point.id%>" class="btn<%=cls%>"><%=point.label%></button>
+      <% } %>
+    <% }); %>
+    </div>
+    <div class="clearfix"></div>
+
+    <% _.each(model.schema, function(point) { %>
+      <% if (point.type=='str') { %>
+        <label><%=point.label%></label>
+        <textarea <%=disabled%>name="<%=point.id%>" class="form-control"><%=model.get(point.id)%></textarea>
+      <% } %>
+    <% }); %>
+    </div>
+</form>
