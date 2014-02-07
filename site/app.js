@@ -2,10 +2,11 @@ define(['underscore', 'backbone', 'events', 'config', 'views', 'elements'],
     function(_, Backbone, Events, Config, Views) {
         return {
             initialize: function(Router) {
-                var c = new PointCollection({
+                var c = new PointCollection().fromDef({
                     id: 'c1',
                     name: "Yes/No/N.A.",
                     label: "Did you do a good job?",
+                    lockable: true,
                     points: {
                         'yes': {     
                             label: "Yes",
@@ -55,21 +56,21 @@ define(['underscore', 'backbone', 'events', 'config', 'views', 'elements'],
                             }
                         },
                         'notes_no': {
-                            label: "What went wrong? (32 to 4096 characters)",
+                            label: "What went wrong? ({min} to {max} characters)",
                             type: "str",
                             min: 32,
                             max: 4096,
                             required: true
                         },
                         'notes_maybe': {
-                            label: "How can you do better in the future? (32 to 4096 characters)",
+                            label: "How can you do better in the future? ({min} to {max} characters)",
                             type: "str",
                             min: 32,
                             max: 4096,
                             required: true
                         },
                         'notes_na': {
-                            label: "Oh you don't work here? (32 to 4096 characters)",
+                            label: "Oh you don't work here? ({min} to {max} characters)",
                             type: "str",
                             min: 3,
                             max: 4096
@@ -86,12 +87,18 @@ define(['underscore', 'backbone', 'events', 'config', 'views', 'elements'],
                 });
 
                 console.log(c.label);
-
-                var admin = new Views.PointCollectionAdminView(c);
+                var preview = new Views.PointCollectionView(c);
+                var admin = new Views.PointCollectionAdminView(c, preview);
                 admin.render();
 
-                var preview = new Views.PointCollectionView(c);
+
                 preview.render();
+
+                //console.log(c.objects['yes'].render());
+                //console.log(c.objects['g1'].render());
+                //console.log(c.objects['no'].toSchema());
+                //console.log(c.objects['notes_na'].toSchema());
+                //console.log(c.objects['yes'].toDef());
             }
         };
     });

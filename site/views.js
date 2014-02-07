@@ -12,29 +12,73 @@ define([
             el: '#collection_admin',
             events: {
                 'click label[name="collection.label"]': 'edit',
+                'click button[name="collection.lockable"]': 'lockable',
+
                 'click button[name="collapse"]': 'collapse',
                 'click button[name="expand"]': 'expand',
             },
+            // Colapse Schema View
             collapse: function (ev) {
                 $(ev.currentTarget).addClass('hidden');
                 $('button[name="expand"]' , this.$el).removeClass('hidden');
                 $('form', this.$el).addClass('hidden');
+                this.collapsed = true;
             },
+            // Expand Schema View
             expand: function (ev) {
                 $(ev.currentTarget).addClass('hidden');
                 $('button[name="collapse"]' , this.$el).removeClass('hidden');
                 $('form', this.$el).removeClass('hidden');
+                this.collapsed = false;
             },
+            //
+            lockable: function (ev) {
+                var el = $(ev.currentTarget);
+                this.collection.lockable = !this.collection.lockable;
+                this.preview.collection = this.collection;
+                this.render();
+                this.preview.render();
+                return false;
+            },
+            // Edit element.
+            // Expects a textbox, I believe immediately following the clicked
+            //  label.
             edit: function (ev) {
-                var id = $(ev.currentTarget).attr('name');
+                var that = this,
+                    el = $(ev.currentTarget),
+                    id = el.attr('name'),
+                    textarea = el.next('textarea[name="' + id + '"]');
+                el.addClass('hidden');
+                textarea.removeClass('hidden');
+                textarea.on('blur', function (ev) {
+                    that.edit_blur(ev);
+                });
+                textarea.focus();
+            },
+            // Finish editing element
+            // Expects the element name to contain a dotted notation name for
+            //  the underlying object.
+            edit_blur: function (ev) {
+                var el = $(ev.currentTarget),
+                    id = el.attr('name');
+                el.off('blur');
 
                 if (id == 'collection.label') {
-                    $(ev.currentTarget).addClass('hidden');
-                    $(ev.currentTarget).next('textarea[name="collection.label"]').removeClass('hidden');
+                    // Kludgy
+                    this.collection.label = el.val();
+                    el.addClass('hidden');
+                    
+                    var label = $(ev.currentTarget).prev('label[name="collection.label"]');
+                    label.removeClass('hidden');
+                    label.html(el.val());
+
+                    this.preview.collection = this.collection;
+                    this.preview.render();
                 }
             },
-            initialize: function (collection) {
-                this.collection = collection; 
+            initialize: function (collection, preview) {
+                this.collection = collection;
+                this.preview = preview;
             },
             render: function () {
                 this.renderOnly();
@@ -50,7 +94,6 @@ define([
         var PointCollectionView = Backbone.View.extend({
             el: '#collection',
             invalid: false,
-            locked: false,
             initialize: function (collection) {
                 this.collection = collection;
             },
@@ -106,7 +149,8 @@ define([
                     this.collection.objects[id].toggle();  
                 }
                 else if (model.schema[id].type == 'str') {
-                    this.collection.objects[id].set_value($(ev.currentTarget).val());
+                    //this.collection.objects[id].set_value($(ev.currentTarget).val());
+                    this.collection.objects[id].value = $(ev.currentTarget).val();
                 }
                 if (!norender) {
                     this.render();
@@ -121,7 +165,7 @@ define([
             },
             lock: function (ev) {
                 if (this.invalid === false) {
-                    this.locked = true;
+                    this.collection.locked = true;
                     this.events = {};
                     this.delegateEvents({});
                     this.renderOnly();
