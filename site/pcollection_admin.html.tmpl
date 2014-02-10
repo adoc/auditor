@@ -8,7 +8,9 @@
 
 <div class="clearfix"></div>
 <form class="<%=collapse%>">
-    <% var schema = view.collection.toSchema() %>
+    <% var model = view.collection.toModel() %>
+    <% var collection = view.collection.objects['consumer']; %>
+    <% var schema = collection.toSchema() %>
     <% var cls = view.invalid == true ? ' has-warning' : ''; %>
     <div class="form-group form-collection-admin">
         <div style="float: left; width: 40px;">
@@ -16,8 +18,11 @@
             <div class="clearfix"></div>
         </div>
         <div style="margin-left: 40px;">
-            <% var lockable = view.collection.lockable === true ? ' btn-primary' : ''; %>
-            <button name="collection.lockable" title="Lockable?" class="btn<%=lockable%>">Lockable</button>
+        <% _.each(model.render, function(point) { %>
+          <% if (point.type=='bool') { %>
+            <button type="button" name="<%=point.id%>" class="btn<%=model.get(point.id) == true ? ' btn-primary' : ' btn-default'%>"><%=point.label%></button>
+          <% } %>
+        <% }); %>
             <hr />
             <div class="form-label">
                 <label name="collection.label" class="control-label pull-left"><%=view.collection.label%></label>
@@ -27,7 +32,7 @@
             <div class="pull-right">
             <% _.each(schema, function(point) { %>
               <% if (point.type == 'bool') { %>
-                <button type="button" name="<%=point.id%>" class="btn"><%=point._label%></button>
+                <button draggable="true" type="button" name="<%=point.id%>" class="btn"><%=point._label%></button>
                 <% if (point.update) { %>
                 <button name="" title="" class="glyphicon glyphicon-filter"></button>
                 <% } %>

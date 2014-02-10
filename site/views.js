@@ -2,17 +2,18 @@ define([
     'jquery',
     'underscore',
     'backbone',
+    'elements',
     'text!pcollection.html.tmpl',
     'text!pcollection_admin.html.tmpl'
     ],
-    function($, _, Backbone, pcollection_tmpl, pcollection_admin_tmpl) {
+    function($, _, Backbone, Elements, pcollection_tmpl, pcollection_admin_tmpl) {
 
         var PointCollectionAdminView = Backbone.View.extend({
             collapsed: true,
             el: '#collection_admin',
             events: {
                 'click label[name="collection.label"]': 'edit',
-                'click button[name="collection.lockable"]': 'lockable',
+                'click button[name="lockable"]': 'update',
 
                 'click button[name="collapse"]': 'collapse',
                 'click button[name="expand"]': 'expand',
@@ -32,13 +33,16 @@ define([
                 this.collapsed = false;
             },
             //
-            lockable: function (ev) {
-                var el = $(ev.currentTarget);
-                this.collection.lockable = !this.collection.lockable;
-                this.preview.collection = this.collection;
-                this.render();
-                this.preview.render();
-                return false;
+            update: function (ev) {
+                var model = this.collection.toModel();
+                var id = $(ev.currentTarget).attr('name');
+
+                if (model.schema[id].type == 'bool') {
+                    this.collection.objects[id].toggle();
+                }
+
+                this.render(); //?
+                this.preview.render(); //?
             },
             // Edit element.
             // Expects a textbox, I believe immediately following the clicked
@@ -76,12 +80,17 @@ define([
                     this.preview.render();
                 }
             },
-            initialize: function (collection, preview) {
-                this.collection = collection;
-                this.preview = preview;
+            initialize: function (consumer) {
+                // Consumer Collection.
+                this.consumer = new PointCollection().fromDef(consumer);
+                // Admin Collection.
+                this.collection = new PointCollection().fromDef(cmeta(this.consumer));
+                // Preview View.
+                this.preview = new PointCollectionView(this.consumer);
             },
             render: function () {
                 this.renderOnly();
+                this.preview.render();
             },
             renderOnly: function () {
                 var template = _.template(pcollection_admin_tmpl, {
@@ -146,10 +155,9 @@ define([
                 var id = $(ev.currentTarget).attr('name');
 
                 if (model.schema[id].type == 'bool') {
-                    this.collection.objects[id].toggle();  
+                    this.collection.objects[id].toggle();
                 }
                 else if (model.schema[id].type == 'str') {
-                    //this.collection.objects[id].set_value($(ev.currentTarget).val());
                     this.collection.objects[id].value = $(ev.currentTarget).val();
                 }
                 if (!norender) {
@@ -159,8 +167,7 @@ define([
                     this._set_events();
                     this.validate();
                     this._set_view();
-                }   
-
+                }
                 return false;
             },
             lock: function (ev) {
@@ -177,7 +184,7 @@ define([
             },
             renderOnly: function () {
                 var template = _.template(pcollection_tmpl, {
-                    view: this
+                    view: this // Just pass the entire viewstate, it's useful.
                 });
                 this.$el.html(template);
             },

@@ -7,7 +7,9 @@ require.config({
         jquery_serialize_object: 'lib/jquery.serialize-object.compiled',
         rng: 'lib/rng',
         persist: 'lib/persist-min',
-        elements: 'elements'
+        elements: 'elements',
+        // Strip for production.
+        qunit: '//code.jquery.com/qunit/qunit-1.14.0'
     },
     shim: {
         backbone: {
@@ -25,6 +27,18 @@ require.config({
         },
         elements: {
             deps: ['underscore']
+        },
+        // Strip for production.
+        qunit: {
+            exports: 'QUnit',
+            init: function() {
+                QUnit.config.autoload = false;
+                QUnit.config.autostart = false;
+            }
+        },
+        // Strip for production.
+        test_elements: {
+            deps: ['elements', 'qunit']
         }
     },
     timeout: 1

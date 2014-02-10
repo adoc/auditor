@@ -85,7 +85,6 @@ function ValueError(message) {
 }
 ValueError.prototype = new Error();
 
-
 function ArgumentError(message) {
     this.name = "ArgumentError";
     this.message = (strf.apply(message, arguments) || "");
@@ -150,16 +149,30 @@ var Point = function (opts) {
         },
         // Parse incoming definitions, replacing tokens.
         _parse_def: function(def) {
-            def = def.replace('{value}', this._value);
+            if (this.type == 'str') {
+                def = def.replace('{value}', '"'+this._value+'"');
+            }
+            else {
+                def = def.replace('{value}', this._value);
+            }
             def = def.replace('{min}', this.min);
             def = def.replace('{max}', this.max);
+            //console.log(def);
             return def;
         },
         // Parse incoming conditions, replacing tokens.
         _parse_condition: function(def) {
+            // handle "in"
+            var in_split = def.split(' in ');
+
+            if (in_split.length == 2) {
+                def = in_split[1] + '.indexOf(' + in_split[0] + ') >= 0';
+            }
+
             def = def.replace('True', 'true');
             def = def.replace('False', 'false');
             def = def.replace('==', '===');
+            //console.log(def);
             return def;
         },
         // Determines whether to retreive a property from the group or from
@@ -251,6 +264,10 @@ var Point = function (opts) {
         },
         fromDef: function () {
         // Yess!!!
+        },
+        // Evaluate condition.
+        evaluate: function (condition) {
+            return eval(this._parse_condition(this._parse_def(condition)));
         },
         // Maybe turn these in to properties.
         // Is this Point shown?
@@ -362,9 +379,7 @@ var Int = function (opts) {
             }
         }
     };
-
-    var _Int = _.extend({}, Point(), _defaults, opts);
-    return _Int.initialize(opts);
+    return Point(_.extend({}, _defaults, opts));
 };
 
 var Str = function (opts) {
@@ -410,9 +425,7 @@ var Float = function (opts) {
             }
         }
     };
-
-    var _Float = _.extend({}, Point(), _defaults, opts);
-    return _Float.initialize(opts);
+    return Point(_.extend({}, _defaults, opts));
 };
 
 var Bool = function (opts) {
@@ -432,6 +445,21 @@ var Bool = function (opts) {
     };
     return Point(_.extend({}, _defaults, opts));
 };
+
+var List = function (opts) {
+    var _defaults =  {
+        value: [],
+        validate: function () {
+            if (typeof this._value === "object" &&
+                    this._value.length !== undefined) {
+                return true;
+            }
+            else {
+                throw "";
+            }
+        }
+    };
+}
 
 var Group = function (opts) {
     var _defaults,
@@ -572,11 +600,70 @@ var Group = function (opts) {
     return _.extend({}, _defaults, _methods, opts);
 };
 
+// Definition of a Point.
+// This is used to construct views to modify Point properties.
+// (Cleverly using the existing Objects/Functions to implement the concept.)
+var PointMeta = {
+    points: {
+        id: {
+            label: 'Id',
+            type: 'str',
+            required: true,
+            show: true
+        },
+        type: {
+            label: 'Type',
+            type: 'str',
+            show: true,
+            valid: ['str', 'bool', 'int', 'float'],
+            bind_states: {
+                '{value} in ["str", "int", "float"]': {
+                    min: ['show'],
+                    max: ['show']
+                }
+            }
+        },
+        label: {
+            label: 'Label',
+            type: 'str',
+            show: true
+        },
+        required: {
+            label: 'Required',
+            type: 'bool',
+            show: true
+        },
+        show: {
+            label: 'Show',
+            type: 'bool',
+            show: true
+        },
+        min: {
+            label: 'Min',
+            type: 'int'
+        },
+        max: {
+            label: 'Max',
+            type: 'int'
+        },
+        valid: {
+            label: 'Valid',
+            type: 'list',
+        },
+        groups: {
+            label: 'Groups',
+            type: 'list'
+        }
+    }
+};
+
 var PointCollection = function (opts) {
 
     var _defaults = {
+        type: 'collection',
         name: '',
         objects: {},
+        collections: {},
         order: [],
         _lockable: false,
         _locked: false
@@ -591,13 +678,27 @@ var PointCollection = function (opts) {
         },
         // Collection updated by group or point, check for update conditions.
         onupdate: function(object) {
-            var id, source, dest;
+            // Deprecated "update" processing.
             if (object && object.update && object.update.condition) {
-                if (evalCondition.call(object, object.update.condition)) {
+                //if (evalCondition.call(object, object.update.condition)) {
+                if (object.evaluate(object.update.condition)) {
                     this._update_objects(object.update.then);
                 }
                 else if (object.update.hasOwnProperty('else')){
                     this._update_objects(object.update.else);
+                }
+            }
+
+            // '{value}==True': {'notes_no': 'show'}
+            // Bind State processing.
+            if (object && object.bind_states) {
+                for (var condition in object.bind_states) {
+                    var condition_eval = object.evaluate(condition);
+                    var binds = object.bind_states[condition];
+                    for (var id in binds) {
+                        var obj = this.objects[id];
+                        obj[binds[id]] = condition_eval;
+                    }
                 }
             }
         },
@@ -645,10 +746,21 @@ var PointCollection = function (opts) {
                 else if (point.type.startsWith('float')) {
                     point = new Float(point);
                 }
+                else if (point.type.startsWith('list')) {
+                    point = new List(point);
+                }
                 else {
                     throw "Expected `point.type` in ['bool', 'int', 'str', 'float']. Got " + point.type;
                 }
                 this.objects[id] = point;
+            }
+        },
+        addCollectionDefs: function (collections) {
+            for (var id in collections) {
+                var collection = collections[id];
+                collection.id = id;
+                this.objects[id] = collection
+                //this.collections[id] = collection;
             }
         },
         // PointCollection to Object.
@@ -666,6 +778,9 @@ var PointCollection = function (opts) {
             if (object.points !== undefined) {
                 this.addPointDefs(object.points);
             }
+            if (object.collections !== undefined) {
+                this.addCollectionDefs(object.collections);
+            }
             // Update order list with actual objects (groups or points).
             if (object.order !== undefined) {
                 for (var i=0; i<object.order.length; i++) {
@@ -675,6 +790,7 @@ var PointCollection = function (opts) {
             if (object.lockable !== undefined) {
                 this.lockable = object.lockable;
             }
+
             return this;
         },
         // Render the collection to an array.
@@ -684,6 +800,7 @@ var PointCollection = function (opts) {
                 var obj = this.order[i];
                 output = output.concat(obj.render());
             }
+            console.log(output);
             return output;
         },
         // Output PointCollection's schema.
