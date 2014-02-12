@@ -69,11 +69,36 @@ function strf(string) {
     var match,
         i=0,
         r = /%s/g;
-    while ((match = r.exec(string)) != null) {
+    while ((match = r.exec(string)) !== null) {
         string = string.splice(match.index, match[0].length, arguments[i+1]);
         i++;
     }
     return string;
+}
+
+// Another simple string formater that accepts {tokens} to retrieve properties
+//  of the same name.
+// example:
+//  var obj = {
+//      thing: 'foo',
+//      whatis: 'bar'
+//  };
+//  tokensToProps.call(obj, 'My {thing} is {whatis}.')
+//  ==="My foo is bar.";
+function tokensToProps(string, escape) {
+    var match,
+        reToken = new RegExp('\{([a-zA-Z0-9]+)\}', 'g'),
+        that = this;
+
+    return string.replace(reToken, function(match, text) {
+        var val = that[text];
+        if (escape === true) {
+            if (typeof val === 'string') {
+                val = '"' + val + '"';
+            }
+        }
+        return val;
+    });
 }
 
 // Custom Errors
@@ -148,18 +173,7 @@ var Point = function (opts) {
             return value;
         },
         // Parse incoming definitions, replacing tokens.
-        _parse_def: function(def) {
-            if (this.type == 'str') {
-                def = def.replace('{value}', '"'+this._value+'"');
-            }
-            else {
-                def = def.replace('{value}', this._value);
-            }
-            def = def.replace('{min}', this.min);
-            def = def.replace('{max}', this.max);
-            //console.log(def);
-            return def;
-        },
+        _parse_def: tokensToProps,
         // Parse incoming conditions, replacing tokens.
         _parse_condition: function(def) {
             // handle "in"
@@ -171,7 +185,9 @@ var Point = function (opts) {
 
             def = def.replace('True', 'true');
             def = def.replace('False', 'false');
-            def = def.replace('==', '===');
+            if (def.indexOf('===') < 0) {
+                def = def.replace('==', '===');
+            }
             //console.log(def);
             return def;
         },
@@ -179,7 +195,7 @@ var Point = function (opts) {
         // this point. (Used for `show` and `required`).
         _group_or_point_property: function (property) {
             if (this[property] === undefined) {
-                var value = false;
+                var value;
                 for (i in this.groups) {
                     var group = this.groups[i];
                     value = value || group[property];
@@ -312,7 +328,7 @@ var Point = function (opts) {
         set: function (value) {
             value = this._parse_value(value);
             // Only if value has changed.
-            if (value != this._value) {
+            if (value !== this._value) {
                 this._value = value;
                 this.onupdate();
             }
@@ -362,6 +378,7 @@ var Point = function (opts) {
 
 var Int = function (opts) {
     var _defaults = {
+        type: 'int',
         value: 0,
         min: 0,
         max: -1,
@@ -384,6 +401,7 @@ var Int = function (opts) {
 
 var Str = function (opts) {
     var _defaults = {
+        type: 'str',
         value: '',
         min: 0,
         max: -1,
@@ -407,6 +425,7 @@ var Str = function (opts) {
 
 var Float = function (opts) {
     var _defaults = {
+        type: 'float',
         value: 0.0,
         min: 0,
         max: -1,
@@ -430,6 +449,7 @@ var Float = function (opts) {
 
 var Bool = function (opts) {
     var _defaults = {
+        type: 'bool',
         value: false,
         toggle: function() {
             this.value = !this.value;
@@ -448,6 +468,7 @@ var Bool = function (opts) {
 
 var List = function (opts) {
     var _defaults =  {
+        type: 'list',
         value: [],
         validate: function () {
             if (typeof this._value === "object" &&
@@ -594,7 +615,7 @@ var Group = function (opts) {
         },
         //
         has_value: function () {
-            return true;
+            return true; //??
         },
     };
     return _.extend({}, _defaults, _methods, opts);
@@ -684,7 +705,7 @@ var PointCollection = function (opts) {
                 if (object.evaluate(object.update.condition)) {
                     this._update_objects(object.update.then);
                 }
-                else if (object.update.hasOwnProperty('else')){
+                else if (object.update.hasOwnProperty('else')) {
                     this._update_objects(object.update.else);
                 }
             }
@@ -809,13 +830,20 @@ var PointCollection = function (opts) {
             for (var i in this.order) {
                 var obj = this.order[i];
                 outobj[obj.id] = obj.toSchema();
+                // Get members' schema if object has.
+                if (obj.members && obj.members.length) {
+                    for(var m=0; m<obj.members.length; m++) {
+                        var mobj = obj.members[m];
+                        outobj[mobj.id] = mobj.toSchema();
+                    }
+                }
             }
             return outobj;
         },
         // Output PointCollection as a Backbone Model.
         toModel: function(render) {
             if (Backbone !== undefined) {
-                var Model = Backbone.Model.extend({}),
+                var Model = Backbone.Model.extend({}), //??
                     model = new Model();
                 model.render = render = render || this.render();
                 for (var i in render) {
@@ -856,6 +884,9 @@ var PointCollection = function (opts) {
         set: function (value) {
             if (this.lockable) {
                 this._locked = value;
+                if (value !== true) {
+                    this._locked = false;
+                }
             }
             else {
                 this._locked = false;
@@ -863,5 +894,9 @@ var PointCollection = function (opts) {
         }
     });
 
+    
+
     return _PointCollection;
+
+
 };

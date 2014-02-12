@@ -32,7 +32,8 @@
             <div class="pull-right">
             <% _.each(schema, function(point) { %>
               <% if (point.type == 'bool') { %>
-                <button draggable="true" type="button" name="<%=point.id%>" class="btn"><%=point._label%></button>
+                <button type="button" name="<%=point.id%>" class="btn"><%=point._label%></button>
+                <div class="edit hidden"></div>
                 <% if (point.update) { %>
                 <button name="" title="" class="glyphicon glyphicon-filter"></button>
                 <% } %>

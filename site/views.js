@@ -18,26 +18,26 @@ define([
                 'click button[name="collapse"]': 'collapse',
                 'click button[name="expand"]': 'expand',
             },
-            // Colapse Schema View
+            // Colapse Admin View
             collapse: function (ev) {
                 $(ev.currentTarget).addClass('hidden');
                 $('button[name="expand"]' , this.$el).removeClass('hidden');
                 $('form', this.$el).addClass('hidden');
                 this.collapsed = true;
             },
-            // Expand Schema View
+            // Expand Admin View
             expand: function (ev) {
                 $(ev.currentTarget).addClass('hidden');
                 $('button[name="collapse"]' , this.$el).removeClass('hidden');
                 $('form', this.$el).removeClass('hidden');
                 this.collapsed = false;
             },
-            //
+            // Event callback when an option is changed.
             update: function (ev) {
                 var model = this.collection.toModel();
                 var id = $(ev.currentTarget).attr('name');
 
-                if (model.schema[id].type == 'bool') {
+                if (model.schema[id].type === 'bool') {
                     this.collection.objects[id].toggle();
                 }
 
@@ -67,7 +67,7 @@ define([
                     id = el.attr('name');
                 el.off('blur');
 
-                if (id == 'collection.label') {
+                if (id === 'collection.label') {
                     // Kludgy
                     this.collection.label = el.val();
                     el.addClass('hidden');
@@ -86,7 +86,7 @@ define([
                 // Admin Collection.
                 this.collection = new PointCollection().fromDef(cmeta(this.consumer));
                 // Preview View.
-                this.preview = new PointCollectionView(this.consumer);
+                this.preview = new PointCollectionView(null, this.consumer);
             },
             render: function () {
                 this.renderOnly();
@@ -103,8 +103,8 @@ define([
         var PointCollectionView = Backbone.View.extend({
             el: '#collection',
             invalid: false,
-            initialize: function (collection) {
-                this.collection = collection;
+            initialize: function (consumer, collection) {
+                this.collection = collection || new PointCollection().fromDef(consumer);
             },
             _set_events: function () {
                 var schema,
@@ -137,7 +137,7 @@ define([
                     this.invalid = false;
                 }
                 catch (err) {
-                    if (err[0].startsWith('Invalid')) {
+                    if (err[0].startsWith('Invalid')) { // Bad, use error objects.
                         this.invalid = true;
                     }
                     else {
@@ -199,5 +199,4 @@ define([
         return {
             PointCollectionAdminView: PointCollectionAdminView,
             PointCollectionView: PointCollectionView};
-
     });
