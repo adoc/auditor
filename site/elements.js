@@ -84,11 +84,15 @@ var Invalid = function (message) {
 }
 Invalid.prototype = new Error();
 
+var Inconsistent = function (message) {
+    this.name = "Inconsistent";
+    this.message = (strf.apply(message, arguments) || "");
+}
+Inconsistent.prototype = new Error();
 
-// Data Point Base object.
-// The bulk of the "Point" implementation is here.
-var Point = function (opts) {
-    // Priveleged methods.
+
+// Base Class for everything. Very magical.
+var Elemental = function(opts) {
     _.extend(this, {
         // Another simple string formater that accepts {tokens} to retrieve properties
         //  of the same name.
@@ -128,6 +132,255 @@ var Point = function (opts) {
             }
             return def;
         },
+        // Pack and return the schema of this DataPoint.
+        _toSchema: function(whitelist, includeAll) { // *tested (ok coverage)
+            var outobj = {};
+            if (!whitelist) {
+                throw new ArgumentError("toSchema requires a `whitelist` of property names.");
+            }
+            for (var w in whitelist) {
+                if (this.hasOwnProperty(whitelist[w])) {
+                    var propVal = this[whitelist[w]];
+                    if (includeAll || (propVal !== undefined && isEmpty(propVal) !== true)) {
+                        outobj[whitelist[w]] = propVal;
+                    }
+                    else {
+                        // Do something?
+                    }
+                }
+            }
+            return outobj;
+        }
+    });
+    this.init(opts);
+};
+
+Elemental.prototype.init = function (opts) {
+    _.extend(this, {
+        id: undefined,
+        _type: 'elemental',
+        _label: undefined,
+        _value: undefined,
+        _show: undefined,
+        _required: undefined,
+        _collection: {},
+        _lockable: false,
+        _locked: false
+    }, opts);
+    return this;
+};
+
+// Decorator classmethod to check for varying levels of consistency.
+Elemental._decConsistent = function (func, errMessage) { // tested (decent coverage)
+    function exc() {
+        throw new Inconsistent(errMessage || 'Inconsistent Error in Elemental._decConsistent.');
+    }
+
+    return function () {
+        if (this._locked === true) {
+            exc();
+        }
+        else if (this._show === false && this._required === true) {
+            exc();
+        }
+        else {
+            return func.apply(this, arguments);
+        }
+    }
+};
+
+// Properties...
+// -------------
+Object.defineProperty(Elemental.prototype, 'type', {
+    enumerable: true,
+    configurable: true,
+    writeable: false,
+    get: function () {
+        return this._type;
+    }
+});
+
+// `label` property.
+// `label` returns an expression-parsed representation of the label.
+Elemental.prototype._labelGetter = function () {
+    return this._prepValue(this._label) &&
+            this._parse_def(this._label);
+};
+Elemental.prototype._labelSetter = Elemental._decConsistent(
+    function (value) {
+        this._label = value;
+    }, "Elemental.label cannot be set because the Elemental is locked."
+);
+Object.defineProperty(Elemental.prototype, 'label', { // tested! (decent coverage)
+    enumerable : true,
+    configurable : true,
+    writeable: false,
+    get: Elemental.prototype._labelGetter,
+    set: Elemental.prototype._labelSetter
+});
+
+// `value` property implementation.
+// `value` returns the value.
+// `value`, when set, will execute the .parseValue method and trigger the
+//  iternal onupdate event.
+Elemental.prototype._valueGetter = function () {
+    return this._prepValue(this._value);
+};
+Elemental.prototype._valueSetter = Elemental._decConsistent(
+    function (value) {
+        value = this.parseValue(value); // another way to do this??
+        // Only if value has changed.
+        if (value !== this._value) {
+            this._value = value;
+            this.onupdate(this);
+        }
+    }, "Elemental.value cannot be set, the Element is locked."
+);
+Object.defineProperty(Elemental.prototype, 'value', { // tested! (decent coverage)
+    enumerable : true,
+    configurable : true,
+    writeable: false,
+    get: Elemental.prototype._valueGetter,
+    set: Elemental.prototype._valueSetter
+});
+//
+Elemental.prototype._showGetter = function () {
+    return this._prepValue(this._show);
+};
+Elemental.prototype._showSetter = Elemental._decConsistent(
+    function (value) {
+        this._show = Boolean(value);
+    }, "Elemental.show cannot be set, the Element is locked."
+);
+Object.defineProperty(Elemental.prototype, 'show', {
+    enumerable: true,
+    configurable: true,
+    writeable: false,
+    get: Elemental.prototype._showGetter,
+    set: Elemental.prototype._showSetter
+});
+
+//
+Elemental.prototype._requiredGetter = function () {
+    return this._prepValue(this._required);
+};
+Elemental.prototype._requireSetter = Elemental._decConsistent(
+        function (value) {
+            this._required = Boolean(value);
+        }, "Elemental.required cannot be set, the Element is locked."
+);
+Object.defineProperty(Elemental.prototype, 'required', { // tested! (decent coverage)
+    enumerable: true,
+    configurable: true,
+    writeable: false,
+    get: Elemental.prototype._requiredGetter,
+    set: Elemental.prototype._requireSetter
+});
+
+// `collection` property implementation.
+// `collection` simply returns the collection assigned.
+// `collection` may be set with a `PointCollection` object.
+Object.defineProperty(Elemental.prototype, 'collection', { // tested! (decent coverage)
+    enumerable: true,
+    configurable: true,
+    set: function (collection) {
+        if (collection instanceof PointCollection) {
+            this._collection = collection;
+        }
+        else {
+            throw new ValueError("Point.collection expected a `PointCollection` object.");
+        }
+    }
+});
+
+// `lockable` property.
+Object.defineProperty(Elemental.prototype, 'lockable', {
+    enumerable: true,
+    configurable: true,
+    writeable: false,
+    get: function () {
+        return this._lockable;
+    },
+    set: function (value) {
+        this._lockable = value;
+        if (value !== true) {
+            this._locked = false;
+        }
+    }
+});
+
+// `locked` property.
+Object.defineProperty(Elemental.prototype, 'locked', {
+    enumerable: true,
+    configurable: true,
+    writeable: false,
+    get: function () {
+        return this._locked;
+    },
+    set: function (value) {
+        if (this.lockable === true) {
+            this._locked = value;
+            if (value !== true) {
+                this._locked = false;
+            }
+        }
+        else {
+            this._locked = false;
+        }
+    }
+});
+
+// Pass-through in the base class.
+// (Check subclasses for actual implementations.)
+Elemental.prototype.parseValue = function (value) { // tested! (decent coverage)
+    //
+    return value;
+};
+
+Elemental.prototype._prepValue = function (value) {
+    if (value === undefined) {
+        return null;
+    }
+    else {
+        return value;
+    }
+};
+
+// Monkeypatch hasOwnProperty. It's not picking up custom properties in Chrome.
+Elemental.prototype.hasOwnProperty = function (propName) { // tested! (1/2 coverage)
+    // This will return false if a prop exists but it's value is undefined.
+    // This behavior is fine for what we're doing here.
+    return (({}).hasOwnProperty.call(this, propName) ||
+                this[propName] !== undefined);
+};
+
+// Evaluate condition.
+Elemental.prototype.evaluate = function (condition) { // tested! (decent coverage)
+    var statement = this._parse_condition(this._parse_def(condition, true));
+    return eval(statement);
+};
+
+//
+Elemental.prototype.toString = function () { // tested! (decent coverage)
+    var id = this.id || ''
+    return "Elemental(" + id + ")";
+};
+
+// Pack and return the schema of this DataPoint.
+Elemental.prototype.toSchema = function (additional) { // tested! (some coverage)
+    additional = additional || [];
+    return this._toSchema(['id', 'type', '_label', '_show', 'show', '_required', 'required'].concat(additional));
+};
+
+Elemental.prototype.onupdate = function () {
+    // pass
+}
+
+
+// Data Point Base object.
+// The bulk of the "Point" implementation is here.
+var Point = function (opts) {
+    _.extend(this, {
         // Determines whether to retreive a property from the group or from
         // this point. (Used for `show` and `required`).
         _group_or_point_property: function (property) { // *tested (decent coverage)
@@ -162,29 +415,13 @@ var Point = function (opts) {
                 throw new ValueError("This point (id: %s) is not in Group (id: %s).", this.id, group.id);
             }
         },
-        // Pack and return the schema of this DataPoint.
-        _toSchema: function(whitelist, includeAll) { // *tested (ok coverage)
-            var outobj = {};
-            if (!whitelist) {
-                throw new ArgumentError("toSchema requires a `whitelist` of property names.");
-            }
-            for (var w in whitelist) {
-                if (this.hasOwnProperty(whitelist[w])) {
-                    var propVal = this[whitelist[w]];
-                    if (includeAll || (propVal !== undefined && isEmpty(propVal) !== true)) {
-                        outobj[whitelist[w]] = propVal;
-                    }
-                    else {
-                        // Do something?
-                    }
-                }
-            }
-            return outobj;
-        },
     });
-
     this.init(opts);
 };
+
+Point.prototype = new Elemental();
+
+Point.prototype.constructor = Point;
 
 // This ensures that any child classes will have new objects to consume.
 //
@@ -192,16 +429,11 @@ var Point = function (opts) {
 //  fired when creating the child class, not when instantiating. In
 //  essence, this is the true constructor.)
 Point.prototype.init = function (opts) { // needs tests??
+    Elemental.prototype.init.call(this);
     _.extend(this, {
-        id: undefined,
-        _show: undefined,
-        _required: undefined,
         update: {},
-        // View properties.
-        _value: undefined,
-        _label: undefined,
-        _groups: [],
-        _collection: {}
+        _type: 'point',
+        _groups: []
     }, opts);
     return this; // for convenience only.
 }
@@ -215,16 +447,9 @@ Object.defineProperty(Point.prototype, 'show', { // tested! (decent coverage)
     writeable: false,
     get: function () {
         var value = this._group_or_point_property('_show');
-        if (value === undefined) {
-            return null;
-        }
-        else {
-            return value;
-        }
+        return Elemental.prototype._prepValue.call(this, value);
     },
-    set: function (value) {
-        this._show = Boolean(value);
-    }
+    set: Elemental.prototype._showSetter
 });
 
 //
@@ -234,60 +459,10 @@ Object.defineProperty(Point.prototype, 'required', { // tested! (decent coverage
     writeable: false,
     get: function () {
         var value = this._group_or_point_property('_required');
-        if (value === undefined) {
-            return null;
-        }
-        else {
-            return value;
-        }
+        return Elemental.prototype._prepValue.call(this, value);
     },
     set: function (value) {
         this._required = Boolean(value);
-    }
-});
-
-// `value` property implementation.
-// `value` returns the value.
-// `value`, when set, will execute the .parseValue method and trigger the
-//  iternal onupdate event.
-Object.defineProperty(Point.prototype, 'value', { // tested! (decent coverage)
-    enumerable : true,
-    configurable : true,
-    writeable: false,
-    get: function () {
-        if (this._value === undefined) {
-            return null;
-        } 
-        else {
-            return this._value;
-        }
-    },
-    set: function (value) {
-        value = this.parseValue(value);
-        // Only if value has changed.
-        if (value !== this._value) {
-            this._value = value;
-            this.onupdate(this);
-        }
-    }
-});
-
-// `label` property.
-// `label` returns an expression-parsed representation of the label.
-Object.defineProperty(Point.prototype, 'label', { // tested! (decent coverage)
-    enumerable : true,
-    configurable : true,
-    writeable: false,
-    get: function () {
-        if (this._label === undefined) {
-            return null;
-        }
-        else {
-            return this._parse_def(this._label);
-        }
-    },
-    set: function (value) {
-        this._label = value;
     }
 });
 
@@ -321,50 +496,15 @@ Object.defineProperty(Point.prototype, 'groups', { // tested! (1/2 coverage)
     }
 });
 
-// `collection` property implementation.
-// `collection` simply returns the collection assigned.
-// `collection` may be set with a `PointCollection` object.
-Object.defineProperty(Point.prototype, 'collection', { // tested! (decent coverage)
-    enumerable: true,
-    configurable: true,
-    set: function (collection) {
-        if (collection instanceof PointCollection) {
-            this._collection = collection;
-        }
-        else {
-            throw new ValueError("Point.collection expected a `PointCollection` object.");
-        }
-    }
-});
-
 // Public Methods...
 // =================
-// Monkeypatch hasOwnProperty. It's not picking up custom properties in Chrome.
-Point.prototype.hasOwnProperty = function (propName) { // tested! (1/2 coverage)
-    // This will return false if a prop exists but it's value is undefined.
-    // This behavior is fine for what we're doing here.
-    return (({}).hasOwnProperty.call(this, propName) ||
-                this[propName] !== undefined);
-};
 
-// Pass-through in the base class.
-// (Check subclasses for actual implementations.)
-Point.prototype.parseValue = function (value) { // tested! (decent coverage)
-    //
-    return value;
-};
 
 // Validate the object.
 // (Implemented in sub-classe prototypes.)
 Point.prototype.validate = function () { // tested! (full coverage)
     //
     throw new NotImplementedError("Point.validate is not implemented.");
-};
-
-// Evaluate condition.
-Point.prototype.evaluate = function (condition) { // tested! (decent coverage)
-    var statement = this._parse_condition(this._parse_def(condition, true));
-    return eval(statement);
 };
 
 //
@@ -376,8 +516,7 @@ Point.prototype.toString = function () { // tested! (decent coverage)
 // Pack and return the schema of this DataPoint.
 Point.prototype.toSchema = function (additional) { // tested! (some coverage)
     additional = additional || [];
-    return this._toSchema(['id', 'type', '_label', 'required', '_required',
-                            'update', 'show', '_show', 'groups'].concat(additional));
+    return Elemental.prototype.toSchema.call(this, ['groups'].concat(additional));
 };
 
 // Pack and return the schema as a Opts object.
@@ -452,9 +591,9 @@ Point.prototype.onupdate = function () {
 
 // Int Point Type.
 var Int = function (opts) {
-    this.parent.init.call(this);
+    Point.prototype.init.call(this);
     _.extend(this, {
-        type: 'int',
+        _type: 'int',
         value: 0,
         min: 0,
         max: -1,
@@ -463,16 +602,16 @@ var Int = function (opts) {
 
 Int.prototype = new Point();
 Int.prototype.constructor = Int;
-Int.prototype.parent = Point.prototype;
 
 Int.prototype.parseValue = function (value) { // tested! (decent coverage)
+    //
     return parseInt(value);
 };
 
 // Pack and return the schema of this Integer DataPoint.
 Int.prototype.toSchema = function (additional) { // tested! (decent coverage)
     additional = additional || [];
-    return this.parent.toSchema.call(this, ['min', 'max'].concat(additional));
+    return Point.prototype.toSchema.call(this, ['min', 'max'].concat(additional));
 };
 
 Int.prototype.validate = function () { // tested! (decent coverage)
@@ -488,9 +627,9 @@ Int.prototype.validate = function () { // tested! (decent coverage)
 
 // Str Point Type.
 var Str = function (opts) {
-    this.parent.init.call(this);
+    Point.prototype.init.call(this);
     _.extend(this, {
-        type: 'str',
+        _type: 'str',
         value: '',
         min: 0,
         max: -1
@@ -499,16 +638,16 @@ var Str = function (opts) {
 
 Str.prototype = new Point();
 Str.prototype.constructor = Str;
-Str.prototype.parent = Point.prototype;
 
 Str.prototype.parseValue = function(value) {
+    //
     return String(value);
 };
 
 // Pack and return the schema of this Integer DataPoint.
 Str.prototype.toSchema = function (additional) {
     additional = additional || [];
-    return this.parent.toSchema.call(this, ['min', 'max'].concat(additional));
+    return Point.prototype.toSchema.call(this, ['min', 'max'].concat(additional));
 };
 
 Str.prototype.validate = function () {
@@ -524,9 +663,9 @@ Str.prototype.validate = function () {
 
 // Float Point Type.
 var Float = function (opts) {
-    this.parent.init.call(this);
+    Point.prototype.init.call(this);
     _.extend(this, {
-        type: 'float',
+        _type: 'float',
         value: 0.0,
         min: 0,
         max: -1,
@@ -536,16 +675,16 @@ var Float = function (opts) {
 
 Float.prototype = new Point();
 Float.prototype.constructor = Float;
-Float.prototype.parent = Point.prototype;
 
 Float.prototype.parseValue = function (value) {
+    //
     return value.toFixed(this.precision);
 }
 
 // Pack and return the schema of this Float DataPoint.
 Float.prototype.toSchema = function (additional) {
     additional = additional || [];
-    return this.parent.toSchema.call(this, ['min', 'max',
+    return Point.prototype.toSchema.call(this, ['min', 'max',
                                         'precision'].concat(additional));
 };
 
@@ -562,16 +701,15 @@ Float.prototype.validate = function () {
 
 // Bool Point Type;
 var Bool = function (opts) {
-    this.parent.init.call(this);
+    Point.prototype.init.call(this);
     _.extend(this, {
-        type: 'bool',
+        _type: 'bool',
         value: false
     }, opts);
 };
 
 Bool.prototype = new Point();
 Bool.prototype.constructor = Bool;
-Bool.prototype.parent = Point.prototype;
 
 Bool.prototype.parseValue = function (value) {
     return Boolean(value);
@@ -592,16 +730,15 @@ Bool.prototype.validate = function () {
 
 // List Point Type;
 var List = function (opts) {
-    this.parent.init.call(this);
+    Point.prototype.init.call(this);
     _.extend(this, {
-        type: 'list',
+        _type: 'list',
         value: []
     }, opts);
 }
 
 List.prototype = new Point();
 List.prototype.constructor = List;
-List.prototype.parent = Point.prototype;
 
 List.prototype.validate = function () {
     if (typeof this.value === "object" &&
@@ -639,9 +776,21 @@ var Group = function (opts) {
     this.init(opts);
 };
 
-Group.prototype = new Point();
+Group.prototype = new Elemental();
 Group.prototype.constructor = Group;
-Group.prototype.parent = Point.prototype;
+
+//
+Group.prototype.init = function (opts) {
+    Elemental.prototype.init.call(this);
+    _.extend(this, {
+        _type: 'group',
+        radio: false, // all members must be bool. ?? why?
+        show: false,
+        required: false,
+        _members: []
+    }, opts);
+    return this; // for convenience only.
+}
 
 // Public Properties...
 // --------------------
@@ -668,22 +817,11 @@ Object.defineProperty(Group.prototype, 'members', { // tested (some coverage)
     }
 });
 
-//
-Group.prototype.init = function (opts) {
-    this.parent.init.call(this);
-    _.extend(this, {
-        radio: false, // all members must be bool. ?? why?
-        show: false,
-        required: false,
-        _members: []
-    }, opts);
-    return this; // for convenience only.
-}
 
 // Pack and return the schema of this DataPoint.
 Group.prototype.toSchema = function (additional) { // tested (some coverage)
     additional = additional || [];
-    return this.parent.toSchema.call(this, ['radio'].concat(additional));
+    return Elemental.prototype.toSchema.call(this, ['radio'].concat(additional));
 }
 
 //
@@ -770,6 +908,195 @@ Group.prototype.onupdate = function (member) {
     }
 };
 
+//
+var PointCollection = function (opts) {
+    _.extend(this, {
+        _update_objects: function(objects) {
+            var id;
+            for (id in objects) {
+                _.extend(this.objects[id], objects[id]);
+            }
+        },
+        // Group definitions to Group objects.
+        // @param   groups  Array   Group definitions.
+        _addGroupDefs: function (groups) {
+            for (id in groups) {
+                var group = groups[id];
+                group.id = id;
+                group.collection = this;
+                this.objects[id] = new Group(group);
+            }
+        },
+        // Point definitions to Point objects.
+        // @param   points  Array   Point definitions.
+        _addPointDefs: function (points) {
+            for (var id in points) {
+                var point = points[id];
+                point.id = id;
+                point.collection = this;
+                point.groups = keys_to_objects(point.groups,
+                                                    this.objects);
+                // Build and store the point.
+                if (point.type.startsWith('bool')) {
+                    point = new Bool(point);
+                }
+                else if (point.type.startsWith('int')) {
+                    point = new Int(point);
+                }
+                else if (point.type.startsWith('str')) {
+                    point = new Str(point);
+                }
+                else if (point.type.startsWith('float')) {
+                    point = new Float(point);
+                }
+                else if (point.type.startsWith('list')) {
+                    point = new List(point);
+                }
+                else {
+                    throw "Expected `point.type` in ['bool', 'int', 'str', 'float']. Got " + point.type;
+                }
+                this.objects[id] = point;
+            }
+        },
+        _addCollectionDefs: function (collections) {
+            for (var id in collections) {
+                var collection = collections[id];
+                collection.id = id;
+                this.objects[id] = collection
+                //this.collections[id] = collection;
+            }
+        },
+        // Collection updated by group or point, check for update conditions.
+        onupdate: function(object) {
+            // Deprecated "update" processing.
+            if (object && object.update && object.update.condition) {
+                if (object.evaluate(object.update.condition)) {
+                    this._update_objects(object.update.then);
+                }
+                else if (object.update.hasOwnProperty('else')) {
+                    this._update_objects(object.update.else);
+                }
+            }
+
+            // '{value}==True': {'notes_no': 'show'}
+            // Bind State processing.
+            if (object && object.bind_states) {
+                for (var condition in object.bind_states) {
+                    var condition_eval = object.evaluate(condition);
+                    var binds = object.bind_states[condition];
+                    for (var id in binds) {
+                        var obj = this.objects[id];
+                        obj[binds[id]] = condition_eval;
+                    }
+                }
+            }
+        },
+        //
+        validate: function () {
+            // Refactor this.
+            var i, obj;
+            for (i in this.objects) {
+                obj = this.objects[i];
+                if (obj.show &&
+                    (obj.required || Boolean(obj.value))) {
+                    obj.validate();
+                }
+            }
+        },
+        // PointCollection to Object.
+        toDef: function() {
+            return {};
+        },
+        // PointCollection from Object.
+        fromDef: function(object) {
+            this.label = object.label || '';
+            // Parse groups in object.
+            if (object.groups !== undefined) {
+                this._addGroupDefs(object.groups);
+            }
+            // Parse points in object.
+            if (object.points !== undefined) {
+                this._addPointDefs(object.points);
+            }
+            if (object.collections !== undefined) {
+                this._addCollectionDefs(object.collections);
+            }
+            // Update order list with actual objects (groups or points).
+            if (object.order !== undefined) {
+                for (var i=0; i<object.order.length; i++) {
+                    this.order.push(this.objects[object.order[i]]);
+                }
+            }
+            if (object.lockable !== undefined) {
+                this.lockable = object.lockable;
+            }
+
+            return this;
+        },
+        // Render the collection to an array.
+        render: function() {
+            var output = [];
+            for (var i in this.order) {
+                var obj = this.order[i];
+                output = output.concat(obj.render());
+            }
+            return output;
+        },
+        // Output PointCollection's schema.
+        toSchema: function(render) {
+            var outobj = {};
+            for (var i in this.order) {
+                var obj = this.order[i];
+                outobj[obj.id] = obj.toSchema();
+                // Get members' schema if object has.
+                if (obj.members && obj.members.length) {
+                    for(var m=0; m<obj.members.length; m++) {
+                        var mobj = obj.members[m];
+                        outobj[mobj.id] = mobj.toSchema();
+                    }
+                }
+            }
+            return outobj;
+        },
+        // Output PointCollection as a Backbone Model.
+        toModel: function(render) {
+            if (Backbone !== undefined) {
+                var Model = Backbone.Model.extend({}), //??
+                    model = new Model();
+                model.render = render = render || this.render();
+                for (var i in render) {
+                    model.set(render[i].id, render[i].value);
+                }
+                model.schema = this.toSchema();
+                return model;
+            }
+            else {
+                throw "PointCollection.toModel requires Backbone.";
+            }
+        }
+    });
+
+    this.init(opts)
+};
+
+PointCollection.prototype = new Elemental();
+PointCollection.prototype.constructor = PointCollection;
+
+PointCollection.prototype.init = function (opts) {
+    Elemental.prototype.init.call(this);
+    _.extend(this, {
+        _type: 'collection',
+        name: '', // ????
+        objects: {}, //?????
+        collections: {}, //???
+        order: [], // ughhhh fix!
+    }, opts);
+    return this;
+};
+
+
+
+
 // Definition of a Point.
 // This is used to construct views to modify Point properties.
 // (Cleverly using the existing Objects/Functions to implement the concept.)
@@ -825,220 +1152,4 @@ var PointMeta = {
             type: 'list'
         }
     }
-};
-
-var PointCollection = function (opts) {
-
-    var _defaults = {
-        type: 'collection',
-        name: '',
-        objects: {},
-        collections: {},
-        order: [],
-        _lockable: false,
-        _locked: false
-    };
-
-    var _methods = {
-        _update_objects: function(objects) {
-            var id;
-            for (id in objects) {
-                _.extend(this.objects[id], objects[id]);
-            }
-        },
-        // Collection updated by group or point, check for update conditions.
-        onupdate: function(object) {
-            // Deprecated "update" processing.
-            if (object && object.update && object.update.condition) {
-                if (object.evaluate(object.update.condition)) {
-                    this._update_objects(object.update.then);
-                }
-                else if (object.update.hasOwnProperty('else')) {
-                    this._update_objects(object.update.else);
-                }
-            }
-
-            // '{value}==True': {'notes_no': 'show'}
-            // Bind State processing.
-            if (object && object.bind_states) {
-                for (var condition in object.bind_states) {
-                    var condition_eval = object.evaluate(condition);
-                    var binds = object.bind_states[condition];
-                    for (var id in binds) {
-                        var obj = this.objects[id];
-                        obj[binds[id]] = condition_eval;
-                    }
-                }
-            }
-        },
-        //
-        validate: function () {
-            // Refactor this.
-            var i, obj;
-            for (i in this.objects) {
-                obj = this.objects[i];
-                if (obj.show &&
-                    (obj.required || Boolean(obj.value))) {
-                    obj.validate();
-                }
-            }
-        },
-        // Group definitions to Group objects.
-        // @param   groups  Array   Group definitions.
-        addGroupDefs: function (groups) {
-            for (id in groups) {
-                var group = groups[id];
-                group.id = id;
-                group.collection = this;
-                this.objects[id] = new Group(group);
-            }
-        },
-        // Point definitions to Point objects.
-        // @param   points  Array   Point definitions.
-        addPointDefs: function (points) {
-            for (var id in points) {
-                var point = points[id];
-                point.id = id;
-                point.collection = this;
-                point.groups = keys_to_objects(point.groups,
-                                                    this.objects);
-                // Build and store the point.
-                if (point.type.startsWith('bool')) {
-                    point = new Bool(point);
-                }
-                else if (point.type.startsWith('int')) {
-                    point = new Int(point);
-                }
-                else if (point.type.startsWith('str')) {
-                    point = new Str(point);
-                }
-                else if (point.type.startsWith('float')) {
-                    point = new Float(point);
-                }
-                else if (point.type.startsWith('list')) {
-                    point = new List(point);
-                }
-                else {
-                    throw "Expected `point.type` in ['bool', 'int', 'str', 'float']. Got " + point.type;
-                }
-                this.objects[id] = point;
-            }
-        },
-        addCollectionDefs: function (collections) {
-            for (var id in collections) {
-                var collection = collections[id];
-                collection.id = id;
-                this.objects[id] = collection
-                //this.collections[id] = collection;
-            }
-        },
-        // PointCollection to Object.
-        toDef: function() {
-            return {};
-        },
-        // PointCollection from Object.
-        fromDef: function(object) {
-            this.label = object.label || '';
-            // Parse groups in object.
-            if (object.groups !== undefined) {
-                this.addGroupDefs(object.groups);
-            }
-            // Parse points in object.
-            if (object.points !== undefined) {
-                this.addPointDefs(object.points);
-            }
-            if (object.collections !== undefined) {
-                this.addCollectionDefs(object.collections);
-            }
-            // Update order list with actual objects (groups or points).
-            if (object.order !== undefined) {
-                for (var i=0; i<object.order.length; i++) {
-                    this.order.push(this.objects[object.order[i]]);
-                }
-            }
-            if (object.lockable !== undefined) {
-                this.lockable = object.lockable;
-            }
-
-            return this;
-        },
-        // Render the collection to an array.
-        render: function() {
-            var output = [];
-            for (var i in this.order) {
-                var obj = this.order[i];
-                output = output.concat(obj.render());
-            }
-            return output;
-        },
-        // Output PointCollection's schema.
-        toSchema: function(render) {
-            var outobj = {};
-            for (var i in this.order) {
-                var obj = this.order[i];
-                outobj[obj.id] = obj.toSchema();
-                // Get members' schema if object has.
-                if (obj.members && obj.members.length) {
-                    for(var m=0; m<obj.members.length; m++) {
-                        var mobj = obj.members[m];
-                        outobj[mobj.id] = mobj.toSchema();
-                    }
-                }
-            }
-            return outobj;
-        },
-        // Output PointCollection as a Backbone Model.
-        toModel: function(render) {
-            if (Backbone !== undefined) {
-                var Model = Backbone.Model.extend({}), //??
-                    model = new Model();
-                model.render = render = render || this.render();
-                for (var i in render) {
-                    model.set(render[i].id, render[i].value);
-                }
-                model.schema = this.toSchema();
-                return model;
-            }
-            else {
-                throw "PointCollection.toModel requires Backbone.";
-            }
-        }
-    };
-
-    _.extend(this, _methods, _defaults);
-
-    // `lockable` property.
-    Object.defineProperty(this, 'lockable', {
-        enumerable: true,
-        configurable: true,
-        get: function () {
-            return this._lockable;
-        },
-        set: function (value) {
-            this._lockable = value;
-            if (value !== true) {
-                this._locked = false;
-            }
-        }
-    });
-
-    // `locked` property.
-    Object.defineProperty(this, 'locked', {
-        enumerable: true,
-        configurable: true,
-        get: function () {
-            return this._locked;
-        },
-        set: function (value) {
-            if (this.lockable) {
-                this._locked = value;
-                if (value !== true) {
-                    this._locked = false;
-                }
-            }
-            else {
-                this._locked = false;
-            }
-        }
-    });
 };

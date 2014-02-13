@@ -5,12 +5,35 @@ define(['qunit', 'elements'],
             // =============
             // (Functional tests should go in another module??)
 
+            // Element...
+            test("Constructor: `Elemental`...", function () {
+                var e = new Elemental();
+                deepEqual(e.id, undefined);
+                deepEqual(e.type, 'elemental');
+            });
+
+            test("...priv method: `Elemental._decConsistent`...", function () {
+                function _consistentFunction() {
+                    this.dummy = 'Uh oh we did something';
+                }
+
+                var e = new Elemental({lockable: true, locked: true});
+                consistentFunction = Elemental._decConsistent(_consistentFunction, 'Nope, its locked');
+                throws(function () { consistentFunction.call(e); } , Inconsistent);
+
+                var e = new Elemental();
+                consistentFunction = Elemental._decConsistent(_consistentFunction, 'Nope, its locked');
+                consistentFunction.call(e);
+                deepEqual(e.dummy, 'Uh oh we did something');
+            });
+
+
             // Point...
             // --------
             test("Constructor: `Point`...", function () {
                 var p = new Point();
                 deepEqual(p.id, undefined);
-                deepEqual(p.type, undefined);
+                deepEqual(p.type, 'point');
                 deepEqual(p._required, undefined);
                 deepEqual(p.required, null);
                 deepEqual(p.update, {});
@@ -266,17 +289,17 @@ define(['qunit', 'elements'],
             });
             test("...pub method: `Point.toSchema`...", function () {
                 var p = new Point();
-                deepEqual(p.toSchema(), {});
+                deepEqual(p.toSchema(), {type: 'point'});
                 var p = new Point({value: 12345});
-                deepEqual(p.toSchema(), {});
+                deepEqual(p.toSchema(), {type: 'point'});
                 var p = new Point({value: 12345, id: 'Mypoint', label: 'Hereitis'});
-                deepEqual(p.toSchema(), {id: 'Mypoint', _label: 'Hereitis'});
+                deepEqual(p.toSchema(), {type: 'point', id: 'Mypoint', _label: 'Hereitis'});
             });
             test("...pub method: `Point.toDef`...", function () {
                 var p = new Point();
-                deepEqual(p.toDef(), {"undefined": {"groups": []}} );
+                deepEqual(p.toDef(), {"undefined": {type: "point", "groups": []}} );
                 var p = new Point({id: 'id1', value: 'thisval'});
-                deepEqual(p.toDef(), {"id1": {"groups": [], value: 'thisval'}} );
+                deepEqual(p.toDef(), {"id1": {type: "point", "groups": [], value: 'thisval'}} );
             });
             test("...pub method: `Point.render`...", function () {
                 var p = new Point();
@@ -284,7 +307,7 @@ define(['qunit', 'elements'],
                 var p = new Point({id: 'id', value: 'value'});
                 deepEqual(p.render(), []);
                 var p = new Point({id: 'id', value: 'value', show: true});
-                deepEqual(p.render(), [{id: 'id', value: 'value'}]);
+                deepEqual(p.render(), [{id: 'id', value: 'value', type: "point"}]);
             });
             test("...pub method: `Point.fromSchema`...", function () {
                 var p = new Point();
@@ -512,8 +535,6 @@ define(['qunit', 'elements'],
                 deepEqual(g1.members.length, 0);
                 throws(function () { g1._del_point(p1); }, ValueError);
             });
-
-
             test("...prop: `Group.members`...", function () {
                 var g = new Group();
                 deepEqual(g.members, []);
@@ -522,7 +543,6 @@ define(['qunit', 'elements'],
                     p1 = new Point({groups: [g1]});
                 deepEqual(g1.members, [p1]);
             });
-
             test("...pub method: `Group.toSchema`...", function () {
                 // `toSchema`
                 var g1 = new Group();
@@ -531,22 +551,19 @@ define(['qunit', 'elements'],
                     _show: false,
                     show: false,
                     required: false,
-                    radio: false});
+                    radio: false,
+                    type: 'group'});
             });
-
             test("...pub method: `Group.render`...", function () {
                 var g1 = new Group();
                 deepEqual(g1.render(), []);
             });
-
             test("...pub method: `Group.toDef`...", function () {
             });
-
             test("...pub method: `Group.validate`...", function () {
                 var g1 = new Group();
                 deepEqual(g1.validate(), undefined);
             });
-
             test("...pub method: `Group.add_point`...", function () {
                 var g1 = new Group();
                 var p1 = new Point();
@@ -555,7 +572,6 @@ define(['qunit', 'elements'],
                 deepEqual(p1.groups[0], g1);
                 throws(function () { g1.add_point(p1)}, ValueError);
             });
-
             test("...pub method: `Group.del_point`...", function () {
                 var g1 = new Group(),
                     p1 = new Point({groups: [g1]});
@@ -568,15 +584,24 @@ define(['qunit', 'elements'],
 
             test('Test `PointCollection` class...', function () {
                 var c = new PointCollection();
-
-                deepEqual(c.type, 'collection');
                 deepEqual(c.name, '');
                 deepEqual(c.objects, {});
                 deepEqual(c.collections, {});
                 deepEqual(c.order, []);
                 deepEqual(c._lockable, false);
                 deepEqual(c._locked, false);
+
+                var c = new PointCollection({
+                    id: 'c1',
+                    name: '',
+                    lockable: true,
+                    locked: true
+                });
             });
+
+
+
+
         }
     }
 });
