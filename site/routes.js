@@ -33,19 +33,24 @@ define(['underscore', 'backbone', 'qunit', 'views', 'tests/test_elements', 'temp
                             admin.render();
                         },
                         'tests': function () {
+                            var that = this,
+                                qunit_css = document.createElement('link');
                             // This could be put in to a view.
                             $('.page').html('<div id="qunit"></div><div id="qunit-fixture"></div>');
-                            var qunit_css = document.createElement('link');
                             qunit_css.setAttribute('rel', 'stylesheet');
                             qunit_css.setAttribute('href', "//code.jquery.com/qunit/qunit-1.14.0.css");
                             $('head').append(qunit_css);
-                            QUnit.load();
-                            QUnit.start();
-                            Tests.run();
-                            this.once('beforeroute', function (route) {
-                                $(qunit_css).remove();
-                                $('.page').html('');
-                                QUnit.stop();
+                            // Wait for .page element to be ready, then
+                            //  execute tests.
+                            $('.page').ready(function () {
+                                QUnit.load();
+                                QUnit.start();
+                                Tests.run();
+                                that.once('beforeroute', function (route) {
+                                    $(qunit_css).remove();
+                                    $('.page').html('');
+                                    QUnit.stop();
+                                });
                             });
                         }
                     }

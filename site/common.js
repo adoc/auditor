@@ -35,11 +35,7 @@ require.config({
                 QUnit.config.autoload = false;
                 QUnit.config.autostart = false;
             }
-        },
-        // Strip for production.
-        test_elements: {
-            deps: ['elements', 'qunit']
         }
     },
-    timeout: 1
+    timeout: 60
 });

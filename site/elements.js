@@ -5,28 +5,6 @@ if (typeof String.prototype.startsWith != 'function') {
   };
 }
 
-// Deprecated.
-function evalCondition(condition) {
-    // Add more as they become relevant.
-    // Possibly find another way to do this than .replace, though
-    // this seems sane.
-
-    condition = condition.replace('{value}', this._value);
-    condition = condition.replace('True', 'true');
-    condition = condition.replace('False', 'false');
-    condition = condition.replace('==', '===');
-
-    return eval(condition);
-}
-
-function precise(float, precision) {
-    // replce with toFixed(precision)
-    // Oh god this is probably sooo wrong. (but it feels so right.)
-    float *= Math.pow(10, precision);
-    float = Math.round(float);
-    return float / Math.pow(10, precision);
-}
-
 function keys_to_objects(keys, objects) {
     var out = [];
     if (keys && keys.length !== undefined) {
@@ -76,128 +54,87 @@ function strf(string) {
     return string;
 }
 
-// Another simple string formater that accepts {tokens} to retrieve properties
-//  of the same name.
-// example:
-//  var obj = {
-//      thing: 'foo',
-//      whatis: 'bar'
-//  };
-//  tokensToProps.call(obj, 'My {thing} is {whatis}.')
-//  ==="My foo is bar.";
-function tokensToProps(string, escape) {
-    var match,
-        reToken = new RegExp('\{([a-zA-Z0-9]+)\}', 'g'),
-        that = this;
-
-    return string.replace(reToken, function(match, text) {
-        var val = that[text];
-        if (escape === true) {
-            if (typeof val === 'string') {
-                val = '"' + val + '"';
-            }
-        }
-        return val;
-    });
-}
-
 // Custom Errors
 // =============
 // Likened and use similarly to pythons ValueError.
-function ValueError(message) {
+var ValueError = function (message) {
     this.name = "ValueError";
     this.message = (strf.apply(message, arguments) || "");
 }
 ValueError.prototype = new Error();
 
-function ArgumentError(message) {
+// When an argument or arguments for a method or function are invalid.
+var ArgumentError = function (message) {
     this.name = "ArgumentError";
     this.message = (strf.apply(message, arguments) || "");
 }
 ArgumentError.prototype = new Error();
 
+// Should be obvious, but when parent class method or prop is not implements.
+NotImplementedError = function (message) {
+    this.name = "NotImplementedError";
+    this.message = (strf.apply(message, arguments) || "");
+}
+NotImplementedError.prototype = new Error();
 
-// Common Functions
-// ================
-
-var toSchema = function(whitelist, includeAll) {
-    var outobj = {};
-    
-    if (!whitelist) {
-        throw new ArgumentError("toSchema requires a `whitelist` of property names.");
-    }
-
-    for (var w in whitelist) {
-        if (this.hasOwnProperty(whitelist[w])) {
-            var propVal = this[whitelist[w]];
-            if (includeAll || (propVal !== undefined && isEmpty(propVal) !== true)) {
-                outobj[whitelist[w]] = propVal;
-            }
-        }
-    }
-
-    return outobj;
-};
+// Validation failures use this Error.
+var Invalid = function (message) {
+    this.name = "Invalid";
+    this.message = (strf.apply(message, arguments) || "");
+}
+Invalid.prototype = new Error();
 
 
 // Data Point Base object.
 // The bulk of the "Point" implementation is here.
 var Point = function (opts) {
-    var _Point, 
-        _defaults,
-        _methods;
+    // Priveleged methods.
+    _.extend(this, {
+        // Another simple string formater that accepts {tokens} to retrieve properties
+        //  of the same name.
+        // example:
+        //  var obj = {
+        //      thing: 'foo',
+        //      whatis: 'bar'
+        //  };
+        //  ._parse_def(obj, 'My {thing} is {whatis}.')
+        //  ==="My foo is bar.";
+        _parse_def: function (string, escape) { // *tested! (decent coverage)
+            var match,
+                reToken = new RegExp('\{([a-zA-Z0-9]+)\}', 'g'),
+                that = this;
 
-    opts = opts || {};
-
-    _defaults = {
-        id: undefined,  
-        required: undefined,
-        update: {},
-
-        // View properties.
-        show: undefined,
-
-        // Reference properties.
-        groups: [],
-        collection: {},
-
-        // Private properties
-        _label: undefined,
-        _value: undefined
-    }
-
-    _methods = {
-        // Pass-through in the base class.
-        // (Check subclasses for actual implementations.)
-        _parse_value: function (value) {
-            return value;
+            return string.replace(reToken, function(match, text) {
+                var val = that[text];
+                if (escape === true) {
+                    if (typeof val === 'string') {
+                        val = '"' + val + '"';
+                    }
+                }
+                return val;
+            });
         },
-        // Parse incoming definitions, replacing tokens.
-        _parse_def: tokensToProps,
         // Parse incoming conditions, replacing tokens.
-        _parse_condition: function(def) {
+        _parse_condition: function(def) { // *tested (decent coverage)
             // handle "in"
             var in_split = def.split(' in ');
-
             if (in_split.length == 2) {
                 def = in_split[1] + '.indexOf(' + in_split[0] + ') >= 0';
             }
-
             def = def.replace('True', 'true');
             def = def.replace('False', 'false');
             if (def.indexOf('===') < 0) {
                 def = def.replace('==', '===');
             }
-            //console.log(def);
             return def;
         },
         // Determines whether to retreive a property from the group or from
         // this point. (Used for `show` and `required`).
-        _group_or_point_property: function (property) {
-            if (this[property] === undefined) {
+        _group_or_point_property: function (property) { // *tested (decent coverage)
+            if (this[property] === undefined || this[property] === null) {
                 var value;
-                for (i in this.groups) {
-                    var group = this.groups[i];
+                for (var i=0; i<this._groups.length; i++) {
+                    var group = this._groups[i];
                     value = value || group[property];
                 }
                 return value;
@@ -207,297 +144,480 @@ var Point = function (opts) {
             }
         },
         // _internal: Do actual addition of group.
-        _add_group: function (group) {
-            if (this.groups.indexOf(group) < 0) {
-                this.groups.push(group);
+        _add_group: function (group) { // *tested (ok coverage)
+            if (this._groups.indexOf(group) < 0) {
+                this._groups.push(group);
             }
             else {
                 throw new ValueError("This point (id: %s) is already in Group (id: %s).", this.id, group.id);
             }
         },
         // Do actual delete of group.
-        _del_group: function (group) {
-            var i = this.groups.indexOf(group);
+        _del_group: function (group) { // *tested (ok coverage)
+            var i = this._groups.indexOf(group);
             if (i >= 0) {
-                this.groups.splice(i, 1);
+                this._groups.splice(i, 1);
             }
             else {
                 throw new ValueError("This point (id: %s) is not in Group (id: %s).", this.id, group.id);
             }
         },
         // Pack and return the schema of this DataPoint.
-        _toSchema: function (additional) {
-            additional = additional || [];
-            return toSchema.call(this, ['id'].concat(additional));
-        },
-        // Add this 'point' to a group.
-        // @group   Group   Group object add the point to.
-        add_group: function (group) {
-            this._add_group(group);
-            group._add_point(this);
-        },
-        // Delete this 'point' from group.
-        del_group: function (group) {
-            this._del_group(group);
-            group._del_point(this, true);
-        },
-        //
-        validate: function () {
-            return false;
-        },
-        // Adhere to is_shown criteria. Returns schema and value.
-        render: function (output) {
-            if (this.is_shown() === true) {
-                return [this._toSchema(['value', 'groups', 'type', 'label', 'min', 'max'])];
-            } 
-            else {
-                return [];
+        _toSchema: function(whitelist, includeAll) { // *tested (ok coverage)
+            var outobj = {};
+            if (!whitelist) {
+                throw new ArgumentError("toSchema requires a `whitelist` of property names.");
             }
-        },
-        // Pack and return the schema of this DataPoint.
-        toSchema: function (additional) {
-            return this._toSchema(['type', 'groups', '_label', 'min', 'max', 'required', 'update', 'show']);
-        },
-        // Pack and return the schema as a Definition object.
-        toDef: function (schema, additional) {
-            var outObj = {};
-            schema = schema || this.toSchema(additional);
-
-            // Pack groups.
-            schema['groups'] = [];
-            for (var i in this.groups) {
-                var group = this.groups[i];
-                schema.groups.push(group.id);
+            for (var w in whitelist) {
+                if (this.hasOwnProperty(whitelist[w])) {
+                    var propVal = this[whitelist[w]];
+                    if (includeAll || (propVal !== undefined && isEmpty(propVal) !== true)) {
+                        outobj[whitelist[w]] = propVal;
+                    }
+                    else {
+                        // Do something?
+                    }
+                }
             }
-
-            delete schema.id;
-            outObj[this.id] = schema;
-            return outObj;
+            return outobj;
         },
-        //
-        fromSchema: function () {
-        // Definitely implement this!!!! Replaces some stuff Collection is doing.
-        },
-        fromDef: function () {
-        // Yess!!!
-        },
-        // Evaluate condition.
-        evaluate: function (condition) {
-            return eval(this._parse_condition(this._parse_def(condition)));
-        },
-        // Maybe turn these in to properties.
-        // Is this Point shown?
-        is_shown: function () {
-            return this._group_or_point_property('show');
-        },
-        // Is a value on this point required?
-        is_required: function () {
-            return this._group_or_point_property('required');
-        },
-        // Does this point have a value? (This can porbably be removed.)
-        has_value: function () {
-            return Boolean(this.value);
-        },
-        // Events
-        // ======
-        // Onupdate event. Trigger Collection onupdate as well as the Group(s)
-        onupdate: function () {
-            // Run "onupdate" on the collection if present.
-            if (this.collection.onupdate) {
-                this.collection.onupdate(this);
-            }
-            // Run "onupdate" on any groups.
-            for (var i in this.groups) {
-                var group = this.groups[i];
-                group.onupdate(this);
-            }
-        }
-    };
-
-    _Point = _.extend({}, _methods, _defaults);
-
-    // Properties
-    // ==========
-    // `value` property. 
-    Object.defineProperty(_Point, 'value', {
-        enumerable : true,
-        configurable : true,
-        get: function () {
-            return this._value;
-        },
-        set: function (value) {
-            value = this._parse_value(value);
-            // Only if value has changed.
-            if (value !== this._value) {
-                this._value = value;
-                this.onupdate();
-            }
-        }
     });
 
-    // `label` property.
-    Object.defineProperty(_Point, 'label', {
-        enumerable : true,
-        configurable : true,
-        get: function () {
-            if (this._label !== undefined) {
-                return this._parse_def(this._label);
-            }
-        },
-        set: function (value) {
-            this._label = value;
-        }
-    });
-
-    // Validate and update groups.
-    for (var i in opts.groups) {
-        var group = opts.groups[i];
-
-        if (group.id !== undefined) {
-            _Point.add_group(group);
-        }
-        else {
-            throw "_Point.initialize: this.groups; Expected groups as array of objects.";
-        }
-    }
-
-    // Bring in `value` separately from extend.
-    if (opts.value !== undefined) {
-        _Point.value = opts.value;
-        delete opts.value;
-    }
-
-    // Bring in `label` separately from extend.
-    if (opts.label !== undefined) {
-        _Point.label = opts.label;
-        delete opts.label;
-    }
- 
-    return _.extend(_Point, opts);
+    this.init(opts);
 };
 
+// This ensures that any child classes will have new objects to consume.
+//
+// (One drawback of JS inheritence is the Parent 'constructor' is only
+//  fired when creating the child class, not when instantiating. In
+//  essence, this is the true constructor.)
+Point.prototype.init = function (opts) { // needs tests??
+    _.extend(this, {
+        id: undefined,
+        _show: undefined,
+        _required: undefined,
+        update: {},
+        // View properties.
+        _value: undefined,
+        _label: undefined,
+        _groups: [],
+        _collection: {}
+    }, opts);
+    return this; // for convenience only.
+}
+
+// Public Properties...
+// --------------------
+//
+Object.defineProperty(Point.prototype, 'show', { // tested! (decent coverage)
+    enumerable: true,
+    configurable: true,
+    writeable: false,
+    get: function () {
+        var value = this._group_or_point_property('_show');
+        if (value === undefined) {
+            return null;
+        }
+        else {
+            return value;
+        }
+    },
+    set: function (value) {
+        this._show = Boolean(value);
+    }
+});
+
+//
+Object.defineProperty(Point.prototype, 'required', { // tested! (decent coverage)
+    enumerable: true,
+    configurable: true,
+    writeable: false,
+    get: function () {
+        var value = this._group_or_point_property('_required');
+        if (value === undefined) {
+            return null;
+        }
+        else {
+            return value;
+        }
+    },
+    set: function (value) {
+        this._required = Boolean(value);
+    }
+});
+
+// `value` property implementation.
+// `value` returns the value.
+// `value`, when set, will execute the .parseValue method and trigger the
+//  iternal onupdate event.
+Object.defineProperty(Point.prototype, 'value', { // tested! (decent coverage)
+    enumerable : true,
+    configurable : true,
+    writeable: false,
+    get: function () {
+        if (this._value === undefined) {
+            return null;
+        } 
+        else {
+            return this._value;
+        }
+    },
+    set: function (value) {
+        value = this.parseValue(value);
+        // Only if value has changed.
+        if (value !== this._value) {
+            this._value = value;
+            this.onupdate(this);
+        }
+    }
+});
+
+// `label` property.
+// `label` returns an expression-parsed representation of the label.
+Object.defineProperty(Point.prototype, 'label', { // tested! (decent coverage)
+    enumerable : true,
+    configurable : true,
+    writeable: false,
+    get: function () {
+        if (this._label === undefined) {
+            return null;
+        }
+        else {
+            return this._parse_def(this._label);
+        }
+    },
+    set: function (value) {
+        this._label = value;
+    }
+});
+
+// `groups` property implementation.    
+// `groups` returns simply the list of groups.
+// `groups` may be set with an Array of group names, provided a `collection`
+//  has been assigned. It may also be set with an Array of Group objects, or
+//  a mix of the two.
+Object.defineProperty(Point.prototype, 'groups', { // tested! (1/2 coverage)
+    enumerable: true,
+    configurable: true,
+    get: function () {
+        return this._groups;
+    },
+    set: function (groups) {
+        // Validate and update groups.
+        for (var i=0; i<groups.length; i++) {
+            var group = groups[i];
+
+            // Group item is a `Group` object.
+            if (group instanceof Group) {
+                this.add_group(group);
+            } // Group item is a string key.
+            else if (typeof group === "string" && this._collection.objects) {
+                this.add_group(this._collection.objects[group]);
+            }
+            else {
+                throw new AttributeError("Point.groups expected groups as array of Group objects or an array of string keys to `collection.objects`.");
+            }
+        }
+    }
+});
+
+// `collection` property implementation.
+// `collection` simply returns the collection assigned.
+// `collection` may be set with a `PointCollection` object.
+Object.defineProperty(Point.prototype, 'collection', { // tested! (decent coverage)
+    enumerable: true,
+    configurable: true,
+    set: function (collection) {
+        if (collection instanceof PointCollection) {
+            this._collection = collection;
+        }
+        else {
+            throw new ValueError("Point.collection expected a `PointCollection` object.");
+        }
+    }
+});
+
+// Public Methods...
+// =================
+// Monkeypatch hasOwnProperty. It's not picking up custom properties in Chrome.
+Point.prototype.hasOwnProperty = function (propName) { // tested! (1/2 coverage)
+    // This will return false if a prop exists but it's value is undefined.
+    // This behavior is fine for what we're doing here.
+    return (({}).hasOwnProperty.call(this, propName) ||
+                this[propName] !== undefined);
+};
+
+// Pass-through in the base class.
+// (Check subclasses for actual implementations.)
+Point.prototype.parseValue = function (value) { // tested! (decent coverage)
+    //
+    return value;
+};
+
+// Validate the object.
+// (Implemented in sub-classe prototypes.)
+Point.prototype.validate = function () { // tested! (full coverage)
+    //
+    throw new NotImplementedError("Point.validate is not implemented.");
+};
+
+// Evaluate condition.
+Point.prototype.evaluate = function (condition) { // tested! (decent coverage)
+    var statement = this._parse_condition(this._parse_def(condition, true));
+    return eval(statement);
+};
+
+//
+Point.prototype.toString = function () { // tested! (decent coverage)
+    var id = this.id || ''
+    return "Point(" + id + ")";
+};
+
+// Pack and return the schema of this DataPoint.
+Point.prototype.toSchema = function (additional) { // tested! (some coverage)
+    additional = additional || [];
+    return this._toSchema(['id', 'type', '_label', 'required', '_required',
+                            'update', 'show', '_show', 'groups'].concat(additional));
+};
+
+// Pack and return the schema as a Opts object.
+// Should be called `toOpts`??
+Point.prototype.toDef = function (schema, additional) { // tested! (little coverage)
+    var outObj = {};
+    schema = schema || this.toSchema(['value'].concat(additional));
+
+    // Pack groups.
+    schema['groups'] = [];
+    for (var i in this.groups) {
+        var group = this.groups[i];
+        schema.groups.push(group.id);
+    }
+
+    delete schema.id;
+    outObj[this.id] = schema;
+    return outObj;
+};
+
+// Adhere to is_shown criteria. Returns schema and value.
+Point.prototype.render = function (additional) { // tested! (some coverage)
+    if (this.show === true) {
+        additional = additional || [];
+        return [this._toSchema(['id', 'type', 'label', 'value', 'groups'].concat(additional))];
+    } 
+    else {
+        return [];
+    }
+}
+
+Point.prototype.fromSchema = function (schema, collection) {
+    // Temporarily not implemented.
+    throw new NotImplementedError("Point.fromSchema is not implemented.");
+};
+
+// Add this 'point' to a group.
+// @group   Group   Group object add the point to.
+Point.prototype.add_group = function (group, collection) { // Implement collection search later.
+    if (group instanceof Group) {
+        this._add_group(group);
+        group._add_point(this);
+    }
+    else {
+        throw new ValueError("Point.add_group expected a Group object.");
+    }
+}
+
+// Delete this 'point' from group.
+Point.prototype.del_group = function (group, collection) { // Implement collection search later.
+    if (group instanceof Group) {
+        this._del_group(group);
+        group._del_point(this, true);
+    }
+    else {
+        throw new ValueError("Point.del_group expected a Group object.")
+    }
+}
+
+// Onupdate event. Trigger Collection onupdate as well as the Group(s)
+Point.prototype.onupdate = function () {
+    // Run "onupdate" on the collection if present.
+    if (this._collection.onupdate) {
+        this._collection.onupdate(this);
+    }
+    // Run "onupdate" on any groups.
+    for (var i in this._groups) {
+        var group = this._groups[i];
+        group.onupdate(this);
+    }
+};
+
+// Int Point Type.
 var Int = function (opts) {
-    var _defaults = {
+    this.parent.init.call(this);
+    _.extend(this, {
         type: 'int',
         value: 0,
         min: 0,
         max: -1,
-        _parse_value: function(value) {
-            return parseInt(value);
-        },
-        validate: function() {
-            if (typeof this._value === "number" &&
-                    this._value >= this.min &&
-                        (this.max < 0 || this._value <= this.max)) {
-                return true;
-            }
-            else {
-                throw "Invalid.Int: Value (" + this._value + ") did not validate.";
-            }
-        }
-    };
-    return Point(_.extend({}, _defaults, opts));
+    }, opts);
 };
 
+Int.prototype = new Point();
+Int.prototype.constructor = Int;
+Int.prototype.parent = Point.prototype;
+
+Int.prototype.parseValue = function (value) { // tested! (decent coverage)
+    return parseInt(value);
+};
+
+// Pack and return the schema of this Integer DataPoint.
+Int.prototype.toSchema = function (additional) { // tested! (decent coverage)
+    additional = additional || [];
+    return this.parent.toSchema.call(this, ['min', 'max'].concat(additional));
+};
+
+Int.prototype.validate = function () { // tested! (decent coverage)
+    if (typeof this.value === "number" &&
+            this.value >= this.min &&
+                (this.max < 0 || this.value <= this.max)) {
+        return true;
+    }
+    else {
+        throw new Invalid("Int value (" + this.value + ") did not validate.");
+    }
+};
+
+// Str Point Type.
 var Str = function (opts) {
-    var _defaults = {
+    this.parent.init.call(this);
+    _.extend(this, {
         type: 'str',
         value: '',
         min: 0,
-        max: -1,
-        _parse_value: function(value) {
-            return String(value);
-        },
-        validate: function() {
-            if (typeof this._value === "string" &&
-                    this._value.length >= this.min &&
-                        (this.max < 0 || this._value.length <= this.max)) {
-                return true;
-            }
-            else {
-                throw ["Invalid.Str", "Value (" + this._value + ") did not validate. id:"+this.id];
-            }
-        }
-    };
-
-    return Point(_.extend({}, _defaults, opts));
+        max: -1
+    }, opts);
 };
 
+Str.prototype = new Point();
+Str.prototype.constructor = Str;
+Str.prototype.parent = Point.prototype;
+
+Str.prototype.parseValue = function(value) {
+    return String(value);
+};
+
+// Pack and return the schema of this Integer DataPoint.
+Str.prototype.toSchema = function (additional) {
+    additional = additional || [];
+    return this.parent.toSchema.call(this, ['min', 'max'].concat(additional));
+};
+
+Str.prototype.validate = function () {
+    if (typeof this.value === "string" &&
+            this.value.length >= this.min &&
+                (this.max < 0 || this.value.length <= this.max)) {
+        return true;
+    }
+    else {
+        throw new Invalid("Str value (" + this.value + ") did not validate. id:" + this.id);
+    }
+};
+
+// Float Point Type.
 var Float = function (opts) {
-    var _defaults = {
+    this.parent.init.call(this);
+    _.extend(this, {
         type: 'float',
         value: 0.0,
         min: 0,
         max: -1,
         precision: 4,
-        _parse_value: function(value) {
-            return precise(value, this.precision);
-        },
-        validate: function() {
-            if (typeof this._value === "number" &&
-                    this._value >= this.min &&
-                        (this.max < 0 || this._value <= this.max)) {
-                return true;
-            }
-            else {
-                throw "Invalid.Float: Value (" + this._value + ") did not validate.";
-            }
-        }
-    };
-    return Point(_.extend({}, _defaults, opts));
+    }, opts);
 };
 
-var Bool = function (opts) {
-    var _defaults = {
-        type: 'bool',
-        value: false,
-        toggle: function() {
-            this.value = !this.value;
-        },
-        validate: function() {
-            if (typeof this._value === "boolean") {
-                return true;
-            }
-            else {
-                throw "Invalid.Bool: Value(" + this._value + ") did not validate.";
-            }
-        }
-    };
-    return Point(_.extend({}, _defaults, opts));
-};
+Float.prototype = new Point();
+Float.prototype.constructor = Float;
+Float.prototype.parent = Point.prototype;
 
-var List = function (opts) {
-    var _defaults =  {
-        type: 'list',
-        value: [],
-        validate: function () {
-            if (typeof this._value === "object" &&
-                    this._value.length !== undefined) {
-                return true;
-            }
-            else {
-                throw "";
-            }
-        }
-    };
+Float.prototype.parseValue = function (value) {
+    return value.toFixed(this.precision);
 }
 
+// Pack and return the schema of this Float DataPoint.
+Float.prototype.toSchema = function (additional) {
+    additional = additional || [];
+    return this.parent.toSchema.call(this, ['min', 'max',
+                                        'precision'].concat(additional));
+};
+
+Float.prototype.validate = function () {
+    if (typeof this.value === "number" &&
+            this.value >= this.min &&
+                (this.max < 0 || this.value <= this.max)) {
+        return true;
+    }
+    else {
+        throw new Invalid("Float value (" + this.value + ") did not validate.");
+    }
+};
+
+// Bool Point Type;
+var Bool = function (opts) {
+    this.parent.init.call(this);
+    _.extend(this, {
+        type: 'bool',
+        value: false
+    }, opts);
+};
+
+Bool.prototype = new Point();
+Bool.prototype.constructor = Bool;
+Bool.prototype.parent = Point.prototype;
+
+Bool.prototype.parseValue = function (value) {
+    return Boolean(value);
+};
+
+Bool.prototype.toggle = function () {
+    this.value = !this.value;
+};
+
+Bool.prototype.validate = function () {
+    if (typeof this.value === "boolean") {
+        return true;
+    }
+    else {
+        throw new Invalid("Bool value(" + this.value + ") did not validate.");
+    }
+};
+
+// List Point Type;
+var List = function (opts) {
+    this.parent.init.call(this);
+    _.extend(this, {
+        type: 'list',
+        value: []
+    }, opts);
+}
+
+List.prototype = new Point();
+List.prototype.constructor = List;
+List.prototype.parent = Point.prototype;
+
+List.prototype.validate = function () {
+    if (typeof this.value === "object" &&
+            this.value.length !== undefined) {
+        return true;
+    }
+    else {
+        throw new Invalid("List!");
+    }
+};
+
+
 var Group = function (opts) {
-    var _defaults,
-        _methods;
-
-    _defaults = {
-        id: null,
-        radio: false, // all members must be bool.
-        show: false,
-        required: false,
-        members: [],
-        collection: {}
-    };
-
-    _methods = {
+    _.extend(this, {
         //
-        _add_point: function (point) {
+        _add_point: function (point) { // tested (decent coverage)
             if (this.members.indexOf(point) < 0) {
                 this.members.push(point);
             } 
@@ -506,7 +626,7 @@ var Group = function (opts) {
             }
         },
         //
-        _del_point: function (point) {
+        _del_point: function (point) { // tested (decent coverage)
             var i = this.members.indexOf(point);
             if (i >= 0) {
                 this.members.splice(i, 1);
@@ -515,110 +635,139 @@ var Group = function (opts) {
                 throw new ValueError("Group (id: %s) doesn't have Point (id: %s) as a member.", this.id, point.id);
             }
         },
-        // Pack and return the schema of this DataPoint.
-        _toSchema: function (additional) {
-            additional = additional || [];
-            var whitelist = ['id'].concat(additional);
-            return toSchema.call(this, whitelist);
-        },
-        //
-        add_point: function (point) {
-            this._add_point(point);
-            point._add_group(this);
-        },
-        //
-        del_point: function (point) {
-            this._del_point(point);
-            point._del_group(this, true);
-        },
-        //
-        onupdate: function (member) {
-            var mod_member;
-            // Check radio buttons.
-            if (member._value && this.radio === true) { 
-                member._lock = true;
-                for (i=0; i<this.members.length; i++) {
-                    mod_member = this.members[i];
-                    if (mod_member._lock !== true) {
-                        mod_member.value = false;
-                    }
-                }
-                delete member._lock;
-            }
-        },
-        //
-        validate: function () {
-            var i, member, val = false;
-            for (i in this.members) {
-                member = this.members[i];
-                val = val || member.value;
-                if (member.is_shown() &&
-                        (member.is_required() || member.has_value())) {
-                    member.validate();
-                }
-            }
-            if (this.is_required() && !val) {
-                throw ['Invalid.Group', 'No values in group but group is required.'];
-            }
-        },
-        //
-        render: function () {
-            if (this.is_shown() === true) {
-                var output = [];
-                for (i=0; i<this.members.length; i++) {
-                    var member = this.members[i];
-                    output = output.concat(member.render());
-                }
-                return output;
-            } 
-            else {
-                return [];
-            }
-        },
-        // Pack and return the schema of this DataPoint.
-        toSchema: function (additional) {
-            return this._toSchema(['label', 'show', 'required', 'update', 'radio'])
-        },
-        // Pack and return the schema as a Definition object.
-        toDef: function (schema, additional) {
-            var outObj = {};
-            schema = schema || this.toSchema(additional);
+    });
+    this.init(opts);
+};
 
-            // Pack groups.
-            schema['groups'] = [];
-            for (var i in this.groups) {
-                var group = this.groups[i];
-                schema.groups.push(group.id);
-            }
+Group.prototype = new Point();
+Group.prototype.constructor = Group;
+Group.prototype.parent = Point.prototype;
 
-            delete schema.id;
-            outObj[this.id] = schema;
-            return outObj;
-        },
-        //
-        is_shown: function () {
-            if (this.show === undefined) {
-                return false;
-            } 
+// Public Properties...
+// --------------------
+Object.defineProperty(Group.prototype, 'members', { // tested (some coverage)
+    enumerable: true,
+    configurable: true,
+    get: function () {
+        return this._members;
+    },
+    set: function (members) {
+        for (var i=0; i<members.length; i++) {
+            var member = members[i];
+
+            if(member instanceof Point) {
+                this.add_point(member);
+            }
+            else if (typeof member === "string" && this._collection.objects) {
+                this.add_point(this._collection.objects[member])
+            }
             else {
-                return this.show;
+                throw new AttributeError("Group.members expected an array of Point objects or an array of string keys to `collection.objects'.");
             }
-        },
-        //
-        is_required: function() {
-            if (this.required === undefined) {
-                return false;
+        }
+    }
+});
+
+//
+Group.prototype.init = function (opts) {
+    this.parent.init.call(this);
+    _.extend(this, {
+        radio: false, // all members must be bool. ?? why?
+        show: false,
+        required: false,
+        _members: []
+    }, opts);
+    return this; // for convenience only.
+}
+
+// Pack and return the schema of this DataPoint.
+Group.prototype.toSchema = function (additional) { // tested (some coverage)
+    additional = additional || [];
+    return this.parent.toSchema.call(this, ['radio'].concat(additional));
+}
+
+//
+Group.prototype.render = function () { // tested (light coverage)
+    if (this.show === true) {
+        var output = [];
+        for (i=0; i<this.members.length; i++) {
+            var member = this.members[i];
+            output = output.concat(member.render());
+        }
+        return output;
+    } 
+    else {
+        return [];
+    }
+};
+
+// Pack and return the schema as a Definition object.
+Group.prototype.toDef = function (schema, additional) { // tested (no coverage)
+    var outObj = {};
+    schema = schema || this.toSchema(additional);
+
+    // Pack groups.
+    schema['groups'] = [];
+    for (var i in this.groups) {
+        var group = this.groups[i];
+        schema.groups.push(group.id);
+    }
+
+    delete schema.id;
+    outObj[this.id] = schema;
+    return outObj;
+};
+
+//
+Group.prototype.validate = function () { // tested (light coverage)
+    var i, member, val = false;
+    for (i in this.members) {
+        member = this.members[i];
+        val = val || member.value;
+        if (member.show &&
+                (member.required || Boolean(member.value))) {
+            member.validate();
+        }
+    }
+    if (this.required && !val) {
+        throw Invalid('Group: No values in group but group is required.');
+    }
+};
+
+//
+Group.prototype.add_point = function (point, collection) { // tested (decent coverage)
+    if (point instanceof Point) {
+        this._add_point(point);
+        point._add_group(this);
+    } 
+    else {
+        throw new ArgumentError('Group.add_point expected a `Point` object.');
+    }
+};
+//
+Group.prototype.del_point = function (point) { // tested (decent coverage)
+    if (point instanceof Point) {
+        this._del_point(point);
+        point._del_group(this, true);
+    }
+    else {
+        throw new ArgumentError('Group.del_point expected a `Point` object.');
+    }
+};
+//
+Group.prototype.onupdate = function (member) {
+    var mod_member;
+    // Check radio buttons.
+    if (member._value && this.radio === true) { 
+        member._lock = true;
+        for (i=0; i<this.members.length; i++) {
+            mod_member = this.members[i];
+            if (mod_member._lock !== true) {
+                mod_member.value = false;
             }
-            else {
-                return this.required;
-            }
-        },
-        //
-        has_value: function () {
-            return true; //??
-        },
-    };
-    return _.extend({}, _defaults, _methods, opts);
+        }
+        delete member._lock;
+    }
 };
 
 // Definition of a Point.
@@ -701,7 +850,6 @@ var PointCollection = function (opts) {
         onupdate: function(object) {
             // Deprecated "update" processing.
             if (object && object.update && object.update.condition) {
-                //if (evalCondition.call(object, object.update.condition)) {
                 if (object.evaluate(object.update.condition)) {
                     this._update_objects(object.update.then);
                 }
@@ -729,8 +877,8 @@ var PointCollection = function (opts) {
             var i, obj;
             for (i in this.objects) {
                 obj = this.objects[i];
-                if (obj.is_shown() &&
-                    (obj.is_required() || obj.has_value())) {
+                if (obj.show &&
+                    (obj.required || Boolean(obj.value))) {
                     obj.validate();
                 }
             }
@@ -821,7 +969,6 @@ var PointCollection = function (opts) {
                 var obj = this.order[i];
                 output = output.concat(obj.render());
             }
-            console.log(output);
             return output;
         },
         // Output PointCollection's schema.
@@ -857,12 +1004,13 @@ var PointCollection = function (opts) {
             }
         }
     };
-    _PointCollection = _.extend({}, _methods, _defaults);
+
+    _.extend(this, _methods, _defaults);
 
     // `lockable` property.
-    Object.defineProperty(_PointCollection, 'lockable', {
-        enumerable : true,
-        configurable : true,
+    Object.defineProperty(this, 'lockable', {
+        enumerable: true,
+        configurable: true,
         get: function () {
             return this._lockable;
         },
@@ -875,9 +1023,9 @@ var PointCollection = function (opts) {
     });
 
     // `locked` property.
-    Object.defineProperty(_PointCollection, 'locked', {
-        enumerable : true,
-        configurable : true,
+    Object.defineProperty(this, 'locked', {
+        enumerable: true,
+        configurable: true,
         get: function () {
             return this._locked;
         },
@@ -893,10 +1041,4 @@ var PointCollection = function (opts) {
             }
         }
     });
-
-    
-
-    return _PointCollection;
-
-
 };
