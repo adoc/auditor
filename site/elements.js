@@ -34,7 +34,7 @@ var isEmpty = function(obj) {
         }
         return true;
     }
-}
+};
 
 // http://stackoverflow.com/a/4314050
 String.prototype.splice = function( idx, rem, s ) {
@@ -60,34 +60,34 @@ function strf(string) {
 var ValueError = function (message) {
     this.name = "ValueError";
     this.message = (strf.apply(message, arguments) || "");
-}
+};
 ValueError.prototype = new Error();
 
 // When an argument or arguments for a method or function are invalid.
 var ArgumentError = function (message) {
     this.name = "ArgumentError";
     this.message = (strf.apply(message, arguments) || "");
-}
+};
 ArgumentError.prototype = new Error();
 
 // Should be obvious, but when parent class method or prop is not implements.
 NotImplementedError = function (message) {
     this.name = "NotImplementedError";
     this.message = (strf.apply(message, arguments) || "");
-}
+};
 NotImplementedError.prototype = new Error();
 
 // Validation failures use this Error.
 var Invalid = function (message) {
     this.name = "Invalid";
     this.message = (strf.apply(message, arguments) || "");
-}
+};
 Invalid.prototype = new Error();
 
 var Inconsistent = function (message) {
     this.name = "Inconsistent";
     this.message = (strf.apply(message, arguments) || "");
-}
+};
 Inconsistent.prototype = new Error();
 
 
@@ -221,14 +221,14 @@ Object.defineProperty(Elemental.prototype, 'label', { // tested! (decent coverag
 
 // `value` property implementation.
 // `value` returns the value.
-// `value`, when set, will execute the .parseValue method and trigger the
+// `value`, when set, will execute the ._parseValue method and trigger the
 //  iternal onupdate event.
 Elemental.prototype._valueGetter = function () {
     return this._prepValue(this._value);
 };
 Elemental.prototype._valueSetter = Elemental._decConsistent(
     function (value) {
-        value = this.parseValue(value); // another way to do this??
+        value = this._parseValue(value); // another way to do this??
         // Only if value has changed.
         if (value !== this._value) {
             this._value = value;
@@ -264,7 +264,7 @@ Object.defineProperty(Elemental.prototype, 'show', {
 Elemental.prototype._requiredGetter = function () {
     return this._prepValue(this._required);
 };
-Elemental.prototype._requireSetter = Elemental._decConsistent(
+Elemental.prototype._requiredSetter = Elemental._decConsistent(
         function (value) {
             this._required = Boolean(value);
         }, "Elemental.required cannot be set, the Element is locked."
@@ -274,7 +274,7 @@ Object.defineProperty(Elemental.prototype, 'required', { // tested! (decent cove
     configurable: true,
     writeable: false,
     get: Elemental.prototype._requiredGetter,
-    set: Elemental.prototype._requireSetter
+    set: Elemental.prototype._requiredSetter
 });
 
 // `collection` property implementation.
@@ -330,13 +330,6 @@ Object.defineProperty(Elemental.prototype, 'locked', {
     }
 });
 
-// Pass-through in the base class.
-// (Check subclasses for actual implementations.)
-Elemental.prototype.parseValue = function (value) { // tested! (decent coverage)
-    //
-    return value;
-};
-
 Elemental.prototype._prepValue = function (value) {
     if (value === undefined) {
         return null;
@@ -344,6 +337,19 @@ Elemental.prototype._prepValue = function (value) {
     else {
         return value;
     }
+};
+
+// Pass-through in the base class.
+// (Check subclasses for actual implementations.)
+Elemental.prototype._parseValue = function (value) { // tested! (decent coverage)
+    return value;
+};
+
+// Validate the object.
+// (Implemented in sub-classe prototypes.)
+Elemental.prototype.validate = function () { // tested! (full coverage)
+    //
+    throw new NotImplementedError("Elemental.validate is not implemented.");
 };
 
 // Monkeypatch hasOwnProperty. It's not picking up custom properties in Chrome.
@@ -372,9 +378,24 @@ Elemental.prototype.toSchema = function (additional) { // tested! (some coverage
     return this._toSchema(['id', 'type', '_label', '_show', 'show', '_required', 'required'].concat(additional));
 };
 
+// Adhere to is_shown criteria. Returns schema and value.
+Elemental.prototype.toRender = function (additional) { // tested! (some coverage)
+    if (this.show === true) {
+        additional = additional || [];
+        return [this._toSchema(['id', 'type', 'label', 'required', 'value'].concat(additional))];
+    } 
+    else {
+        return [];
+    }
+};
+
+Elemental.prototype.fromSchema = function (schema, collection) {
+    throw new NotImplementedError("Temporarily not implemented.");
+};
+
 Elemental.prototype.onupdate = function () {
     // pass
-}
+};
 
 
 // Data Point Base object.
@@ -420,7 +441,6 @@ var Point = function (opts) {
 };
 
 Point.prototype = new Elemental();
-
 Point.prototype.constructor = Point;
 
 // This ensures that any child classes will have new objects to consume.
@@ -431,12 +451,11 @@ Point.prototype.constructor = Point;
 Point.prototype.init = function (opts) { // needs tests??
     Elemental.prototype.init.call(this);
     _.extend(this, {
-        update: {},
         _type: 'point',
         _groups: []
     }, opts);
     return this; // for convenience only.
-}
+};
 
 // Public Properties...
 // --------------------
@@ -461,9 +480,7 @@ Object.defineProperty(Point.prototype, 'required', { // tested! (decent coverage
         var value = this._group_or_point_property('_required');
         return Elemental.prototype._prepValue.call(this, value);
     },
-    set: function (value) {
-        this._required = Boolean(value);
-    }
+    set: Elemental.prototype._requiredSetter
 });
 
 // `groups` property implementation.    
@@ -498,15 +515,6 @@ Object.defineProperty(Point.prototype, 'groups', { // tested! (1/2 coverage)
 
 // Public Methods...
 // =================
-
-
-// Validate the object.
-// (Implemented in sub-classe prototypes.)
-Point.prototype.validate = function () { // tested! (full coverage)
-    //
-    throw new NotImplementedError("Point.validate is not implemented.");
-};
-
 //
 Point.prototype.toString = function () { // tested! (decent coverage)
     var id = this.id || ''
@@ -520,7 +528,8 @@ Point.prototype.toSchema = function (additional) { // tested! (some coverage)
 };
 
 // Pack and return the schema as a Opts object.
-// Should be called `toOpts`??
+// What in the even fuck is this? and is it even needed???
+// (I hate this function)
 Point.prototype.toDef = function (schema, additional) { // tested! (little coverage)
     var outObj = {};
     schema = schema || this.toSchema(['value'].concat(additional));
@@ -537,22 +546,6 @@ Point.prototype.toDef = function (schema, additional) { // tested! (little cover
     return outObj;
 };
 
-// Adhere to is_shown criteria. Returns schema and value.
-Point.prototype.render = function (additional) { // tested! (some coverage)
-    if (this.show === true) {
-        additional = additional || [];
-        return [this._toSchema(['id', 'type', 'label', 'value', 'groups'].concat(additional))];
-    } 
-    else {
-        return [];
-    }
-}
-
-Point.prototype.fromSchema = function (schema, collection) {
-    // Temporarily not implemented.
-    throw new NotImplementedError("Point.fromSchema is not implemented.");
-};
-
 // Add this 'point' to a group.
 // @group   Group   Group object add the point to.
 Point.prototype.add_group = function (group, collection) { // Implement collection search later.
@@ -563,7 +556,7 @@ Point.prototype.add_group = function (group, collection) { // Implement collecti
     else {
         throw new ValueError("Point.add_group expected a Group object.");
     }
-}
+};
 
 // Delete this 'point' from group.
 Point.prototype.del_group = function (group, collection) { // Implement collection search later.
@@ -574,7 +567,7 @@ Point.prototype.del_group = function (group, collection) { // Implement collecti
     else {
         throw new ValueError("Point.del_group expected a Group object.")
     }
-}
+};
 
 // Onupdate event. Trigger Collection onupdate as well as the Group(s)
 Point.prototype.onupdate = function () {
@@ -603,8 +596,7 @@ var Int = function (opts) {
 Int.prototype = new Point();
 Int.prototype.constructor = Int;
 
-Int.prototype.parseValue = function (value) { // tested! (decent coverage)
-    //
+Int.prototype._parseValue = function (value) { // tested! (decent coverage)
     return parseInt(value);
 };
 
@@ -615,13 +607,13 @@ Int.prototype.toSchema = function (additional) { // tested! (decent coverage)
 };
 
 Int.prototype.validate = function () { // tested! (decent coverage)
-    if (typeof this.value === "number" &&
-            this.value >= this.min &&
-                (this.max < 0 || this.value <= this.max)) {
+    if (typeof this._value === "number" &&
+            this._value >= this.min &&
+                (this.max < 0 || this._value <= this.max)) {
         return true;
     }
     else {
-        throw new Invalid("Int value (" + this.value + ") did not validate.");
+        throw new Invalid("Int value (" + this._value + ") did not validate.");
     }
 };
 
@@ -639,8 +631,7 @@ var Str = function (opts) {
 Str.prototype = new Point();
 Str.prototype.constructor = Str;
 
-Str.prototype.parseValue = function(value) {
-    //
+Str.prototype._parseValue = function(value) {
     return String(value);
 };
 
@@ -651,13 +642,13 @@ Str.prototype.toSchema = function (additional) {
 };
 
 Str.prototype.validate = function () {
-    if (typeof this.value === "string" &&
-            this.value.length >= this.min &&
-                (this.max < 0 || this.value.length <= this.max)) {
+    if (typeof this._value === "string" &&
+            this._value.length >= this.min &&
+                (this.max < 0 || this._value.length <= this.max)) {
         return true;
     }
     else {
-        throw new Invalid("Str value (" + this.value + ") did not validate. id:" + this.id);
+        throw new Invalid("Str value (" + this._value + ") did not validate. id:" + this.id);
     }
 };
 
@@ -669,17 +660,20 @@ var Float = function (opts) {
         value: 0.0,
         min: 0,
         max: -1,
-        precision: 4,
+        precision: 6,
     }, opts);
 };
 
 Float.prototype = new Point();
 Float.prototype.constructor = Float;
 
-Float.prototype.parseValue = function (value) {
-    //
-    return value.toFixed(this.precision);
-}
+Float.prototype._parseValue = function (value) {
+    return parseFloat(value);
+};
+
+Float.prototype._prepValue = function (value) {
+    return value.toPrecision(this.precision);
+};
 
 // Pack and return the schema of this Float DataPoint.
 Float.prototype.toSchema = function (additional) {
@@ -689,13 +683,13 @@ Float.prototype.toSchema = function (additional) {
 };
 
 Float.prototype.validate = function () {
-    if (typeof this.value === "number" &&
-            this.value >= this.min &&
-                (this.max < 0 || this.value <= this.max)) {
+    if (typeof this._value === "number" &&
+            this._value >= this.min &&
+                (this.max < 0 || this._value <= this.max)) {
         return true;
     }
     else {
-        throw new Invalid("Float value (" + this.value + ") did not validate.");
+        throw new Invalid("Float value (" + this._value + ") did not validate.");
     }
 };
 
@@ -711,20 +705,20 @@ var Bool = function (opts) {
 Bool.prototype = new Point();
 Bool.prototype.constructor = Bool;
 
-Bool.prototype.parseValue = function (value) {
+Bool.prototype._parseValue = function (value) {
     return Boolean(value);
 };
 
 Bool.prototype.toggle = function () {
-    this.value = !this.value;
+    this.value = !this._value;
 };
 
 Bool.prototype.validate = function () {
-    if (typeof this.value === "boolean") {
+    if (typeof this._value === "boolean") {
         return true;
     }
     else {
-        throw new Invalid("Bool value(" + this.value + ") did not validate.");
+        throw new Invalid("Bool value(" + this._value + ") did not validate.");
     }
 };
 
@@ -735,7 +729,7 @@ var List = function (opts) {
         _type: 'list',
         value: []
     }, opts);
-}
+};
 
 List.prototype = new Point();
 List.prototype.constructor = List;
@@ -750,7 +744,7 @@ List.prototype.validate = function () {
     }
 };
 
-
+//
 var Group = function (opts) {
     _.extend(this, {
         //
@@ -790,7 +784,7 @@ Group.prototype.init = function (opts) {
         _members: []
     }, opts);
     return this; // for convenience only.
-}
+};
 
 // Public Properties...
 // --------------------
@@ -822,15 +816,15 @@ Object.defineProperty(Group.prototype, 'members', { // tested (some coverage)
 Group.prototype.toSchema = function (additional) { // tested (some coverage)
     additional = additional || [];
     return Elemental.prototype.toSchema.call(this, ['radio'].concat(additional));
-}
+};
 
 //
-Group.prototype.render = function () { // tested (light coverage)
+Group.prototype.toRender = function () { // tested (light coverage)
     if (this.show === true) {
         var output = [];
         for (i=0; i<this.members.length; i++) {
             var member = this.members[i];
-            output = output.concat(member.render());
+            output = output.concat(member.toRender());
         }
         return output;
     } 
@@ -968,17 +962,6 @@ var PointCollection = function (opts) {
         },
         // Collection updated by group or point, check for update conditions.
         onupdate: function(object) {
-            // Deprecated "update" processing.
-            if (object && object.update && object.update.condition) {
-                if (object.evaluate(object.update.condition)) {
-                    this._update_objects(object.update.then);
-                }
-                else if (object.update.hasOwnProperty('else')) {
-                    this._update_objects(object.update.else);
-                }
-            }
-
-            // '{value}==True': {'notes_no': 'show'}
             // Bind State processing.
             if (object && object.bind_states) {
                 for (var condition in object.bind_states) {
@@ -1034,11 +1017,11 @@ var PointCollection = function (opts) {
             return this;
         },
         // Render the collection to an array.
-        render: function() {
+        toRender: function() {
             var output = [];
             for (var i in this.order) {
                 var obj = this.order[i];
-                output = output.concat(obj.render());
+                output = output.concat(obj.toRender());
             }
             return output;
         },
@@ -1063,7 +1046,7 @@ var PointCollection = function (opts) {
             if (Backbone !== undefined) {
                 var Model = Backbone.Model.extend({}), //??
                     model = new Model();
-                model.render = render = render || this.render();
+                model.render = render = render || this.toRender();
                 for (var i in render) {
                     model.set(render[i].id, render[i].value);
                 }
@@ -1093,8 +1076,6 @@ PointCollection.prototype.init = function (opts) {
     }, opts);
     return this;
 };
-
-
 
 
 // Definition of a Point.

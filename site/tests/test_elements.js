@@ -10,9 +10,27 @@ define(['qunit', 'elements'],
                 var e = new Elemental();
                 deepEqual(e.id, undefined);
                 deepEqual(e.type, 'elemental');
+                deepEqual(e._required, undefined);
+                deepEqual(e.required, null);
+                deepEqual(e._show, undefined);
+                deepEqual(e.show, null);
+                deepEqual(Boolean(e._value), false);
+                deepEqual(Boolean(e.value), false);
+                deepEqual(e._collection, {});
+
+                var e = new Elemental({value: '123'});
+                deepEqual(e.value, '123');
+                var e = new Elemental({value: 123});
+                deepEqual(e.value, 123);
+                var e = new Elemental({value: true});
+                deepEqual(e.value, true);
+                var e = new Elemental({value: 123.123, show: true, label: 'this'});
+                deepEqual(e.value, 123.123);
+                deepEqual(e.show, true);
+                deepEqual(e.label, 'this');
             });
 
-            test("...priv method: `Elemental._decConsistent`...", function () {
+            test("...class method: `Elemental._decConsistent`...", function () {
                 function _consistentFunction() {
                     this.dummy = 'Uh oh we did something';
                 }
@@ -27,83 +45,215 @@ define(['qunit', 'elements'],
                 deepEqual(e.dummy, 'Uh oh we did something');
             });
 
+            test("...priv method: `Elemental._parse_def`...", function () {
+                var e = new Elemental();
+                e.value = 'value111';
+                deepEqual(e._parse_def('{value}==={value}'),
+                                'value111===value111');
+                deepEqual(e._parse_def('{value}==={value}', true),
+                                '"value111"==="value111"');
+                e.label = 'wonky';
+                deepEqual(e._parse_def('{label}==={label}'),
+                                'wonky===wonky');
+                deepEqual(e._parse_def('{label}==={label}', true),
+                                '"wonky"==="wonky"');
+                e.value = 123;
+                deepEqual(e._parse_def('{value}==={value}'),
+                                '123===123');
+                deepEqual(e._parse_def('{value}==={value}', true),
+                                '123===123');
+                e.value = 123.123;
+                deepEqual(e._parse_def('{value}==={value}'),
+                                '123.123===123.123');
+                deepEqual(e._parse_def('{value}==={value}', true),
+                                '123.123===123.123');
+                e.value = "123";
+                deepEqual(e._parse_def('{value}==={value}'),
+                                '123===123');
+                deepEqual(e._parse_def('{value}==={value}', true),
+                                '"123"==="123"');
+                e.show = true;
+                deepEqual(e._parse_def('{show}==={show}'),
+                                'true===true');
+                deepEqual(e._parse_def('{show}==={show}', true),
+                                'true===true');
+                e.required = false;
+                deepEqual(e._parse_def('{required}==={required}'),
+                                'false===false');
+                deepEqual(e._parse_def('{required}==={required}', true),
+                                'false===false');
+            });
+            test("...priv method: `Elemental._parse_condition`...", function () {
+                var e = new Elemental();
+                deepEqual(e._parse_condition('this==True'),
+                            'this===true');
+                deepEqual(e._parse_condition('this==False'),
+                            'this===false');
+                deepEqual(e._parse_condition('this in [1,2,3]'),
+                            '[1,2,3].indexOf(this) >= 0');
+                deepEqual(e._parse_condition('this===true'), 'this===true');
+                deepEqual(e._parse_condition('this===false'), 'this===false');
+            });
+            test("...priv method: `Elemental._toSchema'...", function () {
+                var e = new Elemental({id: 'foopoint',
+                                    value: 1234});
+                deepEqual(e._toSchema(['id', 'value']),
+                            {id: "foopoint", value: 1234});
+                var e = new Elemental({id: 'foopoint',
+                                    value: 1234,
+                                    show: true});
+                deepEqual(e._toSchema(['id', '_id', 'value', '_value',
+                                        'show', '_show']),
+                            {show: true, _show: true,
+                                id: "foopoint", value: 1234, _value: 1234});
+            });
+            test("...prop: `Elemental.value`...", function () {
+                var e = new Elemental();
+                deepEqual(e.value, null);
+                deepEqual(e._value, undefined);
+                var e = new Elemental({value: 1234});
+                deepEqual(e.value, 1234);
+                deepEqual(e._value, 1234);
+                var e = new Elemental({value: '1234'});
+                deepEqual(e.value, '1234');
+                deepEqual(e._value, '1234');
+                var e = new Elemental();
+                e.value = '1234';
+                deepEqual(e.value, '1234');
+                deepEqual(e._value, '1234');
+            });
+            test("...prop: `Elemental.label`...", function () {
+                var e = new Elemental();
+                deepEqual(e.label, null);
+                deepEqual(e._label, undefined);
+                var e = new Elemental({label: 'Label'});
+                deepEqual(e.label, 'Label');
+                deepEqual(e._label, 'Label');
+                var e = new Elemental();
+                e.label = 'label';
+                deepEqual(e.label, 'label');
+                deepEqual(e._label, 'label');
+                var e = new Elemental({value: 1234, label: '{value} in label.'});
+                deepEqual(e.label, '1234 in label.');
+                deepEqual(e._label, '{value} in label.');
+            });
+            test("...prop: `Elemental.show`..." , function () {
+                var e = new Elemental();
+                deepEqual(e.show, null);
+                deepEqual(e._show, undefined);
+
+                var e = new Elemental({show: true});
+                deepEqual(e.show, true);
+                deepEqual(e._show, true);
+            });
+            test("...prop: `Elemental.required`..." , function () {
+                var e = new Elemental();
+                deepEqual(e.required, null);
+                deepEqual(e._required, undefined);
+
+                var e = new Elemental({required: true});
+                deepEqual(e.required, true);
+                deepEqual(e._required, true);
+            });
+            test("...prop: `Elemental.collection`...", function () {
+                var e = new Elemental();
+                deepEqual(e.collection, undefined);
+                var c = new PointCollection(),
+                    e = new Elemental({collection: c});
+                deepEqual(e.collection, undefined);
+                deepEqual(e._collection, c);
+            });
+            test("...pub method: `Elemental.hasOwnProperty`...", function () {
+                var e = new Elemental();
+                deepEqual(e.hasOwnProperty('value'), true);
+                deepEqual(e.hasOwnProperty('show'), true);
+                deepEqual(e.hasOwnProperty('foo'), false);
+            });
+            test("...pub method: `Elemental._parseValue`...", function () {
+                var e = new Elemental();
+                deepEqual(e._parseValue('value'), 'value');
+                deepEqual(e._parseValue(123), 123);
+                deepEqual(e._parseValue(123.123), 123.123);
+                deepEqual(e._parseValue(true), true);
+                deepEqual(e._parseValue(false), false);
+            });
+            test("...pub method: `Elemental.validate`...", function () {
+                var e = new Elemental();
+                throws(e.validate, NotImplementedError);
+            });
+            test("...pub method: `Elemental.evaluate`...", function () {
+                var e = new Elemental();
+                deepEqual(e.evaluate('{value}===null'), true);
+                var e = new Elemental({value: 1234});
+                deepEqual(e.evaluate('{value}===1234'), true);
+                var e = new Elemental({value: '1234'});
+                deepEqual(e.evaluate('{value}==="1234"', true), true);
+                var e = new Elemental({value: true});
+                deepEqual(e.evaluate('{value}==True'), true);
+            });
+            test("...pub method: `Elemental.toString`...", function () {
+                var e = new Elemental();
+                deepEqual(e.toString(), 'Elemental()');
+                var e = new Elemental({id: 'Mine'});
+                deepEqual(e.toString(), 'Elemental(Mine)');
+            });
+            test("...pub method: `Elemental.toSchema`...", function () {
+                // base
+                var e = new Elemental();
+                deepEqual(e.toSchema(), {type: 'elemental'});
+                // add `id`
+                var e = new Elemental({id: 'id1'});
+                deepEqual(e.toSchema(), {type: 'elemental', id: 'id1'});
+                // add `label`
+                var e = new Elemental({type: 'elemental', id: 'id1', label: 'label1'});
+                deepEqual(e.toSchema(), {type: 'elemental', id: 'id1', _label: 'label1'});
+                // add `show`
+                var e = new Elemental({type: 'elemental', id: 'id1', label: 'label1', show: true});
+                deepEqual(e.toSchema(), {type: 'elemental', id: 'id1', _label: 'label1',
+                                            _show: true, show: true});
+                // add `required`
+                var e = new Elemental({type: 'elemental', id: 'id1', label: 'label1', show: true,
+                                        required: true});
+                deepEqual(e.toSchema(), {type: 'elemental', id: 'id1', _label: 'label1',
+                                            _show: true, show: true, _required: true, required: true});
+                // Try extra properties.
+                var e = new Elemental({type: 'elemental', id: 'id1', label: 'label1', show: true,
+                                        required: true, value: 'nope'});
+                deepEqual(e.toSchema(), {type: 'elemental', id: 'id1', _label: 'label1',
+                                            _show: true, show: true, _required: true, required: true});
+            });
+            test("...pub method: `Elemental.toRender`...", function () {
+                // Base Elemental
+                var p = new Elemental();
+                deepEqual(p.toRender(), []);
+                // Unshown Elemental
+                var p = new Elemental({id: 'id', value: 'value'});
+                deepEqual(p.toRender(), []);
+                // Shown Elemental
+                var p = new Elemental({id: 'id1', show: true});
+                deepEqual(p.toRender(), [{id: 'id1', type: "elemental"}]);
+                // add `label`
+                var p = new Elemental({id: 'id1', label: 'label1', show: true});
+                deepEqual(p.toRender(), [{id: 'id1', label: 'label1', type: "elemental"}]);
+                // add `required`
+                var p = new Elemental({id: 'id1', label: 'label1', required: true, show: true});
+                deepEqual(p.toRender(), [{id: 'id1', type: "elemental", label: 'label1', required: true}]);
+                // add `value`
+                var p = new Elemental({id: 'id1', label: 'label1', required: true, value: 'value', show: true});
+                deepEqual(p.toRender(), [{id: 'id1', label: 'label1', required: true, value: 'value', type: "elemental"}]);
+            });
+            test("...pub method: `Elemental.fromSchema`...", function () {
+                var p = new Elemental();
+                throws(p.fromSchema, NotImplementedError);
+            });
 
             // Point...
             // --------
             test("Constructor: `Point`...", function () {
                 var p = new Point();
-                deepEqual(p.id, undefined);
                 deepEqual(p.type, 'point');
-                deepEqual(p._required, undefined);
-                deepEqual(p.required, null);
-                deepEqual(p.update, {});
-                deepEqual(p._show, undefined);
-                deepEqual(p.show, null);
-                deepEqual(Boolean(p._value), false);
-                deepEqual(Boolean(p.value), false);
                 deepEqual(p._groups, []);
                 deepEqual(p.groups, []);
-                deepEqual(p._collection, {});
-
-                var p = new Point({value: '123'});
-                deepEqual(p.value, '123');
-                var p = new Point({value: 123});
-                deepEqual(p.value, 123);
-                var p = new Point({value: true});
-                deepEqual(p.value, true);
-                var p = new Point({value: 123.123, show: true, label: 'this'});
-                deepEqual(p.value, 123.123);
-                deepEqual(p.show, true);
-                deepEqual(p.label, 'this');
-            });
-            test("...priv method: `Point._parse_def`...", function () {
-                var p = new Point();
-                p.value = 'value111';
-                deepEqual(p._parse_def('{value}==={value}'),
-                                'value111===value111');
-                deepEqual(p._parse_def('{value}==={value}', true),
-                                '"value111"==="value111"');
-                p.label = 'wonky';
-                deepEqual(p._parse_def('{label}==={label}'),
-                                'wonky===wonky');
-                deepEqual(p._parse_def('{label}==={label}', true),
-                                '"wonky"==="wonky"');
-                p.value = 123;
-                deepEqual(p._parse_def('{value}==={value}'),
-                                '123===123');
-                deepEqual(p._parse_def('{value}==={value}', true),
-                                '123===123');
-                p.value = 123.123;
-                deepEqual(p._parse_def('{value}==={value}'),
-                                '123.123===123.123');
-                deepEqual(p._parse_def('{value}==={value}', true),
-                                '123.123===123.123');
-                p.value = "123";
-                deepEqual(p._parse_def('{value}==={value}'),
-                                '123===123');
-                deepEqual(p._parse_def('{value}==={value}', true),
-                                '"123"==="123"');
-                p.show = true;
-                deepEqual(p._parse_def('{show}==={show}'),
-                                'true===true');
-                deepEqual(p._parse_def('{show}==={show}', true),
-                                'true===true');
-                p.required = false;
-                deepEqual(p._parse_def('{required}==={required}'),
-                                'false===false');
-                deepEqual(p._parse_def('{required}==={required}', true),
-                                'false===false');
-            });
-            test("...priv method: `Point._parse_condition`...", function () {
-                var p = new Point();
-                deepEqual(p._parse_condition('this==True'),
-                            'this===true');
-                deepEqual(p._parse_condition('this==False'),
-                            'this===false');
-                deepEqual(p._parse_condition('this in [1,2,3]'),
-                            '[1,2,3].indexOf(this) >= 0');
-                deepEqual(p._parse_condition('this===true'), 'this===true');
-                deepEqual(p._parse_condition('this===false'), 'this===false');
             });
             test("...priv method: `Point._group_or_point_property`...", function () {
                 var g1 = new Group({value: 'foobers'}),
@@ -143,24 +293,8 @@ define(['qunit', 'elements'],
                 deepEqual(p.groups.length, 0);
                 throws(function() { p._del_group(g1); }, ValueError);
             });
-            test("...priv method: `Point._toSchema'...", function () {
-                var p = new Point({id: 'foopoint',
-                                    value: 1234});
-                deepEqual(p._toSchema(['id', 'value']),
-                            {id: "foopoint", value: 1234});
-                var p = new Point({id: 'foopoint',
-                                    value: 1234,
-                                    show: true});
-                deepEqual(p._toSchema(['id', '_id', 'value', '_value',
-                                        'show', '_show']),
-                            {show: true, _show: true,
-                                id: "foopoint", value: 1234, _value: 1234});
-            });
-            test("...prop: `Point.show`..." , function () {
-                var p = new Point({show: true});
-                deepEqual(p.show, true);
-                deepEqual(p._show, true);
 
+            test("...prop: `Point.show`..." , function () {
                 var g = new Group({show: true}),
                     p = new Point({groups: [g]});
                 deepEqual(p.show, true);
@@ -182,10 +316,6 @@ define(['qunit', 'elements'],
                 deepEqual(p._show, false);
             });
             test("...prop: `Point.required`..." , function () {
-                var p = new Point({required: true});
-                deepEqual(p.required, true);
-                deepEqual(p._required, true);
-
                 var g = new Group({required: true}),
                     p = new Point({groups: [g]});
                 deepEqual(p.required, true);
@@ -206,36 +336,6 @@ define(['qunit', 'elements'],
                 deepEqual(p.required, false);
                 deepEqual(p._required, false);
             });
-            test("...prop: `Point.value`...", function () {
-                var p = new Point();
-                deepEqual(p.value, null);
-                deepEqual(p._value, undefined);
-                var p = new Point({value: 1234});
-                deepEqual(p.value, 1234);
-                deepEqual(p._value, 1234);
-                var p = new Point({value: '1234'});
-                deepEqual(p.value, '1234');
-                deepEqual(p._value, '1234');
-                var p = new Point();
-                p.value = '1234';
-                deepEqual(p.value, '1234');
-                deepEqual(p._value, '1234');
-            });
-            test("...prop: `Point.label`...", function () {
-                var p = new Point();
-                deepEqual(p.label, null);
-                deepEqual(p._label, undefined);
-                var p = new Point({label: 'Label'});
-                deepEqual(p.label, 'Label');
-                deepEqual(p._label, 'Label');
-                var p = new Point();
-                p.label = 'label';
-                deepEqual(p.label, 'label');
-                deepEqual(p._label, 'label');
-                var p = new Point({value: 1234, label: '{value} in label.'});
-                deepEqual(p.label, '1234 in label.');
-                deepEqual(p._label, '{value} in label.');
-            });
             test("...prop: `Point.groups`...", function() {
                 var p = new Point();
                 deepEqual(p.groups, []);
@@ -244,43 +344,6 @@ define(['qunit', 'elements'],
                 deepEqual(p.groups, [g1]);
                 deepEqual(g1.members, [p]);
             });
-            test("...prop: `Point.collection`...", function () {
-                var p = new Point();
-                deepEqual(p.collection, undefined);
-                var c = new PointCollection(),
-                    p = new Point({collection: c});
-                deepEqual(p.collection, undefined);
-                deepEqual(p._collection, c);
-            });
-            test("...pub method: `Point.hasOwnProperty`...", function () {
-                var p = new Point();
-                deepEqual(p.hasOwnProperty('value'), true);
-                deepEqual(p.hasOwnProperty('show'), true);
-                deepEqual(p.hasOwnProperty('groups'), true);
-                deepEqual(p.hasOwnProperty('foo'), false);
-            });
-            test("...pub method: `Point.parseValue`...", function () {
-                var p = new Point();
-                deepEqual(p.parseValue('value'), 'value');
-                deepEqual(p.parseValue(123), 123);
-                deepEqual(p.parseValue(123.123), 123.123);
-                deepEqual(p.parseValue(true), true);
-                deepEqual(p.parseValue(false), false);
-            });
-            test("...pub method: `Point.validate`...", function () {
-                var p = new Point();
-                throws(p.validate, NotImplementedError);
-            });
-            test("...pub method: `Point.evaluate`...", function () {
-                var p = new Point();
-                deepEqual(p.evaluate('{value}===null'), true);
-                var p = new Point({value: 1234});
-                deepEqual(p.evaluate('{value}===1234'), true);
-                var p = new Point({value: '1234'});
-                deepEqual(p.evaluate('{value}==="1234"', true), true);
-                var p = new Point({value: true});
-                deepEqual(p.evaluate('{value}==True'), true);
-            });
             test("...pub method: `Point.toString`...", function () {
                 var p = new Point();
                 deepEqual(p.toString(), 'Point()');
@@ -288,30 +351,43 @@ define(['qunit', 'elements'],
                 deepEqual(p.toString(), 'Point(Mine)');
             });
             test("...pub method: `Point.toSchema`...", function () {
+                // base
                 var p = new Point();
                 deepEqual(p.toSchema(), {type: 'point'});
-                var p = new Point({value: 12345});
-                deepEqual(p.toSchema(), {type: 'point'});
-                var p = new Point({value: 12345, id: 'Mypoint', label: 'Hereitis'});
-                deepEqual(p.toSchema(), {type: 'point', id: 'Mypoint', _label: 'Hereitis'});
+                // add `id`
+                var p = new Point({id: 'id1'});
+                deepEqual(p.toSchema(), {type: 'point', id: 'id1'});
+                // add `label`
+                var p = new Point({type: 'point', id: 'id1', label: 'label1'});
+                deepEqual(p.toSchema(), {type: 'point', id: 'id1', _label: 'label1'});
+                // add `show`
+                var p = new Point({type: 'point', id: 'id1', label: 'label1', show: true});
+                deepEqual(p.toSchema(), {type: 'point', id: 'id1', _label: 'label1',
+                                            _show: true, show: true});
+                // add `required`
+                var p = new Point({type: 'point', id: 'id1', label: 'label1', show: true,
+                                        required: true});
+                deepEqual(p.toSchema(), {type: 'point', id: 'id1', _label: 'label1',
+                                            _show: true, show: true, _required: true, required: true});
+                // add `groups`
+                var g = new Group(),
+                    p = new Point({type: 'point', id: 'id1', label: 'label1', show: true,
+                                        required: true, groups: [g]});
+                deepEqual(p.toSchema(), {type: 'point', id: 'id1', _label: 'label1',
+                                            _show: true, show: true, _required: true, required: true,
+                                            groups: [g]});
+                // Try extra properties.
+                var p = new Point({type: 'point', id: 'id1', label: 'label1', show: true,
+                                        required: true, groups: [g], value: 'nope'});
+                deepEqual(p.toSchema(), {type: 'point', id: 'id1', _label: 'label1',
+                                            _show: true, show: true, _required: true, required: true,
+                                            groups: [g]});
             });
             test("...pub method: `Point.toDef`...", function () {
                 var p = new Point();
                 deepEqual(p.toDef(), {"undefined": {type: "point", "groups": []}} );
                 var p = new Point({id: 'id1', value: 'thisval'});
                 deepEqual(p.toDef(), {"id1": {type: "point", "groups": [], value: 'thisval'}} );
-            });
-            test("...pub method: `Point.render`...", function () {
-                var p = new Point();
-                deepEqual(p.render(), []);
-                var p = new Point({id: 'id', value: 'value'});
-                deepEqual(p.render(), []);
-                var p = new Point({id: 'id', value: 'value', show: true});
-                deepEqual(p.render(), [{id: 'id', value: 'value', type: "point"}]);
-            });
-            test("...pub method: `Point.fromSchema`...", function () {
-                var p = new Point();
-                throws(p.fromSchema, NotImplementedError);
             });
             test("...pub method: `Point.add_group`...", function () {
                 var g = new Group(),
@@ -333,15 +409,7 @@ define(['qunit', 'elements'],
             test('Constructor: `Int`...', function () {
                 var i = new Int();
                 // Just check basic initial state.
-                deepEqual(i.id, undefined);
                 deepEqual(i.type, 'int');
-                deepEqual(i._required, undefined);
-                deepEqual(i.required, null);
-                deepEqual(i._show, undefined);
-                deepEqual(i.show, null);
-                deepEqual(Boolean(i.value), false);
-                deepEqual(i.update, {});
-                deepEqual(i.groups, []);
                 deepEqual(i.min, 0);
                 deepEqual(i.max, -1);
                 deepEqual(i.value, 0);
@@ -387,55 +455,6 @@ define(['qunit', 'elements'],
                 deepEqual(i._parse_def('{value}==={value}', true),
                                 'NaN===NaN');
             });
-            test("...priv method: `Int._parse_condition`...", function () {
-                var i = new Int();
-                deepEqual(i._parse_condition('this==True'),
-                            'this===true');
-                deepEqual(i._parse_condition('this==False'),
-                            'this===false');
-                deepEqual(i._parse_condition('this in [1,2,3]'),
-                            '[1,2,3].indexOf(this) >= 0');
-                deepEqual(i._parse_condition('this===false'), 'this===false');
-            });
-            test("...priv method: `Int._group_or_point_property`...", function () {
-                var g1 = new Group({value: 'foobers'}),
-                    g2 = new Group({show: true}),
-                    i = new Int({groups: [g1, g2], required: true});
-                deepEqual(i._group_or_point_property('value'), 0);
-                deepEqual(i._group_or_point_property('show'), true);
-                deepEqual(i._group_or_point_property('required'), true);
-
-                var g1 = new Group({required: true}),
-                    g2 = new Group({required: false}),
-                    p1 = new Int({groups: [g1, g2]}),
-                    p2 = new Int({groups: [g2, g1]}),
-                    p3 = new Int({groups: [g1, g2], required: false});
-                deepEqual(p1._group_or_point_property('required'), true);
-                deepEqual(p2._group_or_point_property('required'), true);
-                deepEqual(p3._group_or_point_property('required'), false)
-            });
-            test("...priv method: `Int._add_group`...", function() {
-                var i = new Int(),
-                    g1 = new Group(),
-                    g2 = new Group();
-                i._add_group(g1);
-                deepEqual(i.groups.indexOf(g1), 0);
-                i._add_group(g2);
-                deepEqual(i.groups.indexOf(g2), 1);
-                deepEqual(i.groups.length, 2);
-                throws(function() { i._add_group(g1); }, ValueError);
-            });
-            test("...priv method: `Int._del_group`...", function () {
-                // `_del_group`
-                var g1 = new Group(),
-                    g2 = new Group(),
-                    i = new Int({groups: [g1, g2]});
-                i._del_group(g1);
-                deepEqual(i.groups[0], g2);
-                i._del_group(g2);
-                deepEqual(i.groups.length, 0);
-                throws(function() { i._del_group(g1); }, ValueError);
-            });
             test("...priv method: `Int._toSchema'...", function () {
                 var i = new Int({id: 'foopoint',
                                     value: '1234'});
@@ -464,12 +483,12 @@ define(['qunit', 'elements'],
                 deepEqual(i.value, 1234);
                 deepEqual(i._value, 1234);
             });
-            test('...pub method: `Int.parseValue`...', function () {
+            test('...pub method: `Int._parseValue`...', function () {
                 var i = new Int();
-                deepEqual(i.parseValue('value'), NaN);
-                deepEqual(i.parseValue(123), 123);
-                deepEqual(i.parseValue(123.123), 123);
-                deepEqual(i.parseValue(true), NaN);
+                deepEqual(i._parseValue('value'), NaN);
+                deepEqual(i._parseValue(123), 123);
+                deepEqual(i._parseValue(123.123), 123);
+                deepEqual(i._parseValue(true), NaN);
             });
             test("...pub method: `Int.toSchema`...", function () {
                 var i = new Int();
@@ -495,6 +514,335 @@ define(['qunit', 'elements'],
                 deepEqual(i.validate(), true);
                 i.value = 10000;
                 throws(i.validate, Invalid);
+            });
+
+            // Str...
+            // ------
+            test('Constructor: `Str`...', function () {
+                var s = new Str();
+                // Just check basic initial state.
+                deepEqual(s.type, 'str');
+                deepEqual(s.min, 0);
+                deepEqual(s.max, -1);
+                deepEqual(s.value, '');
+                deepEqual(s.validate(), true);
+
+                var s = new Str({value: '123'});
+                deepEqual(s.value, '123');
+                var s = new Str({value: 123});
+                deepEqual(s.value, '123');
+                var s = new Str({value: 123.123});
+                deepEqual(s.value, '123.123');
+                var s = new Str({value: 'myVal'});
+                deepEqual(s.value, 'myVal');
+            });
+            test("...priv method: `Str._parse_def`...", function () {
+                var s = new Str();
+                s.value = 'value111';
+                deepEqual(s._parse_def('{value}==={value}'),
+                                'value111===value111');
+                deepEqual(s._parse_def('{value}==={value}', true),
+                                '"value111"==="value111"');
+                s.value = 123;
+                deepEqual(s._parse_def('{value}==={value}'),
+                                '123===123');
+                deepEqual(s._parse_def('{value}==={value}', true),
+                                '"123"==="123"');
+                s.value = 123.123;
+                deepEqual(s._parse_def('{value}==={value}'),
+                                '123.123===123.123');
+                deepEqual(s._parse_def('{value}==={value}', true),
+                                '"123.123"==="123.123"');
+                s.value = "123";
+                deepEqual(s._parse_def('{value}==={value}'),
+                                '123===123');
+                deepEqual(s._parse_def('{value}==={value}', true),
+                                '"123"==="123"');
+                s.value = true;
+                deepEqual(s._parse_def('{value}==={value}'),
+                                'true===true');
+                deepEqual(s._parse_def('{value}==={value}', true),
+                                '"true"==="true"');
+                s.value = false;
+                deepEqual(s._parse_def('{value}==={value}'),
+                                'false===false');
+                deepEqual(s._parse_def('{value}==={value}', true),
+                                '"false"==="false"');
+            });
+            test("...priv method: `Str._toSchema'...", function () {
+                var s = new Str({id: 'foopoint',
+                                    value: '1234'});
+                deepEqual(s._toSchema(['id', 'value']),
+                            {id: "foopoint", value: '1234'});
+                var s = new Str({id: 'foopoint',
+                                    value: 1234.11,
+                                    show: true});
+                deepEqual(s._toSchema(['id', '_id', 'value', '_value',
+                                        'show', '_show']),
+                            {show: true, _show: true,
+                                id: "foopoint", value: '1234.11', _value: '1234.11'});
+            });
+            test("...prop: `Str.value`...", function () {
+                var s = new Str();
+                deepEqual(s.value, '');
+                deepEqual(s._value, '');
+                var s = new Str({value: 1234});
+                deepEqual(s.value, '1234');
+                deepEqual(s._value, '1234');
+                var s = new Str({value: '1234'});
+                deepEqual(s.value, '1234');
+                deepEqual(s._value, '1234');
+                var s = new Str();
+                s.value = '1234';
+                deepEqual(s.value, '1234');
+                deepEqual(s._value, '1234');
+            });
+            test('...pub method: `Str._parseValue`...', function () {
+                var s = new Str();
+                deepEqual(s._parseValue('value'), 'value');
+                deepEqual(s._parseValue(123), '123');
+                deepEqual(s._parseValue(123.123), '123.123');
+                deepEqual(s._parseValue(true), 'true');
+            });
+            test("...pub method: `Str.toSchema`...", function () {
+                var s = new Str();
+                deepEqual(s.toSchema(), {max: -1, min: 0, type: "str"});
+                var s = new Str({value: 1234.1234, id: 'Mine'});
+                deepEqual(s.toSchema(), {max: -1, min: 0, id: 'Mine', type: "str"});
+            });
+            test("...pub method: `Str.validate`...", function () {
+                var s = new Str();
+                deepEqual(s.validate(), true);
+                var s = new Str({value: 1234567});
+                deepEqual(s.validate(), true);
+                var s = new Str();
+                s._value = 'abcs';
+                throws(s.validate, Invalid);
+                var s = new Str({min: 1, max: 10});
+                throws(s.validate, Invalid);
+                s.value = '0';
+                deepEqual(s.validate(), true);
+                s.value = '0123456789';
+                deepEqual(s.validate(), true);
+                s.value = '012345678901234567890';
+                throws(s.validate, Invalid);
+            });
+
+            // Float...
+            // ------
+            test('Constructor: `Float`...', function () {
+                var f = new Float();
+                // Just check basic initial state.
+                deepEqual(f.type, 'float');
+                deepEqual(f.min, 0);
+                deepEqual(f.max, -1);
+                deepEqual(f.precision, 6);
+                deepEqual(f.value, "0.00000");
+                deepEqual(f.validate(), true);
+
+                var f = new Float({value: '123'});
+                deepEqual(f.value, "123.000");
+                var f = new Float({value: 123});
+                deepEqual(f.value, "123.000");
+                var f = new Float({value: 123.123});
+                deepEqual(f.value, "123.123");
+                var f = new Float({value: 'myVal'});
+                deepEqual(f.value, "NaN"); // Why string??
+            });
+            test("...priv method: `Float._parse_def`...", function () {
+                var f = new Float();
+                f.value = 'value111';
+                deepEqual(f._parse_def('{value}==={value}'),
+                                'NaN===NaN');
+                deepEqual(f._parse_def('{value}==={value}', true),
+                                '"NaN"==="NaN"');
+                f.value = 123;
+                deepEqual(f._parse_def('{value}==={value}'),
+                                '123.000===123.000');
+                deepEqual(f._parse_def('{value}==={value}', true),
+                                '"123.000"==="123.000"');
+                f.value = 123.123;
+                deepEqual(f._parse_def('{value}==={value}'),
+                                '123.123===123.123');
+                deepEqual(f._parse_def('{value}==={value}', true),
+                                '"123.123"==="123.123"');
+                f.value = "123";
+                deepEqual(f._parse_def('{value}==={value}'),
+                                '123.000===123.000');
+                deepEqual(f._parse_def('{value}==={value}', true),
+                                '"123.000"==="123.000"');
+                f.value = true;
+                deepEqual(f._parse_def('{value}==={value}'),
+                                'NaN===NaN');
+                deepEqual(f._parse_def('{value}==={value}', true),
+                                '"NaN"==="NaN"');
+                f.value = false;
+                deepEqual(f._parse_def('{value}==={value}'),
+                                'NaN===NaN');
+                deepEqual(f._parse_def('{value}==={value}', true),
+                                '"NaN"==="NaN"');
+            });
+            test("...priv method: `Float._toSchema'...", function () {
+                var f = new Float({id: 'foopoint',
+                                    value: '1234'});
+                deepEqual(f._toSchema(['id', 'value']),
+                            {id: "foopoint", value: '1234.00'});
+                var f = new Float({id: 'foopoint',
+                                    value: 1234.11,
+                                    show: true});
+                deepEqual(f._toSchema(['id', '_id', 'value', '_value',
+                                        'show', '_show']),
+                            {show: true, _show: true,
+                                id: "foopoint", value: '1234.11', _value: 1234.11});
+            });
+            test("...prop: `Float.value`...", function () {
+                var f = new Float();
+                deepEqual(f.value, '0.00000');
+                deepEqual(f._value, 0);
+                var f = new Float({value: 1234});
+                deepEqual(f.value, '1234.00');
+                deepEqual(f._value, 1234);
+                var f = new Float({value: '1234'});
+                deepEqual(f.value, '1234.00');
+                deepEqual(f._value, 1234);
+                var f = new Float();
+                f.value = '1234';
+                deepEqual(f.value, '1234.00');
+                deepEqual(f._value, 1234);
+            });
+            test('...pub method: `Float._parseValue`...', function () {
+                var f = new Float();
+                deepEqual(f._parseValue('value'), NaN);
+                deepEqual(f._parseValue(123), 123);
+                deepEqual(f._parseValue(123.123), 123.123);
+                deepEqual(f._parseValue(true), NaN);
+            });
+            test("...pub method: `Float.toSchema`...", function () {
+                var f = new Float();
+                deepEqual(f.toSchema(), {max: -1, min: 0, precision: 6, type: "float"});
+                var f = new Float({value: 1234.1234, id: 'Mine'});
+                deepEqual(f.toSchema(), {max: -1, min: 0, id: 'Mine', precision: 6, type: "float"});
+            });
+            test("...pub method: `Float.validate`...", function () {
+                var f = new Float();
+                deepEqual(f.validate(), true);
+                var f = new Float({value: 1234567});
+                deepEqual(f.validate(), true);
+                var f = new Float();
+                f._value = 'abcs';
+                throws(f.validate, Invalid);
+                var f = new Float({min: 1, max: 1000});
+                throws(f.validate, Invalid);
+                f.value = '1';
+                deepEqual(f.validate(), true);
+                f.value = 1000;
+                deepEqual(f.validate(), true);
+                f.value = 1001;
+                throws(f.validate, Invalid);
+            });
+
+            // Bool...
+            // ------
+            test('Constructor: `Bool`...', function () {
+                var b = new Bool();
+                // Just check basic initial state.
+                deepEqual(b.type, 'bool');
+                deepEqual(b.value, false);
+                deepEqual(b.validate(), true);
+
+                var b = new Bool({value: '123'});
+                deepEqual(b.value, true);
+                var b = new Bool({value: 123});
+                deepEqual(b.value, true);
+                var b = new Bool({value: 123.123});
+                deepEqual(b.value, true);
+                var b = new Bool({value: 'myVal'});
+                deepEqual(b.value, true);
+                var b = new Bool({value: false});
+                deepEqual(b.value, false);
+            });
+            test("...priv method: `Bool._parse_def`...", function () {
+                var b = new Bool();
+                b.value = 'value111';
+                deepEqual(b._parse_def('{value}==={value}'),
+                                'true===true');
+                deepEqual(b._parse_def('{value}==={value}', true),
+                                'true===true');
+                b.value = 123;
+                deepEqual(b._parse_def('{value}==={value}'),
+                                'true===true');
+                deepEqual(b._parse_def('{value}==={value}', true),
+                                'true===true');
+                b.value = 123.123;
+                deepEqual(b._parse_def('{value}==={value}'),
+                                'true===true');
+                deepEqual(b._parse_def('{value}==={value}', true),
+                                'true===true');
+                b.value = "123";
+                deepEqual(b._parse_def('{value}==={value}'),
+                                'true===true');
+                deepEqual(b._parse_def('{value}==={value}', true),
+                                'true===true');
+                b.value = true;
+                deepEqual(b._parse_def('{value}==={value}'),
+                                'true===true');
+                deepEqual(b._parse_def('{value}==={value}', true),
+                                'true===true');
+                b.value = false;
+                deepEqual(b._parse_def('{value}==={value}'),
+                                'false===false');
+                deepEqual(b._parse_def('{value}==={value}', true),
+                                'false===false');
+            });
+            test("...priv method: `Bool._toSchema'...", function () {
+                var b = new Bool({id: 'foopoint',
+                                    value: '1234'});
+                deepEqual(b._toSchema(['id', 'value']),
+                            {id: "foopoint", value: true});
+                var b = new Bool({id: 'foopoint',
+                                    value: 1234.11,
+                                    show: true});
+                deepEqual(b._toSchema(['id', '_id', 'value', '_value',
+                                        'show', '_show']),
+                            {show: true, _show: true,
+                                id: "foopoint", value: true, _value: true});
+            });
+            test("...prop: `Bool.value`...", function () {
+                var b = new Bool();
+                deepEqual(b.value, false);
+                deepEqual(b._value, false);
+                var b = new Bool({value: 1234});
+                deepEqual(b.value, true);
+                deepEqual(b._value, true);
+                var b = new Bool({value: '1234'});
+                deepEqual(b.value, true);
+                deepEqual(b._value, true);
+                var b = new Bool();
+                b.value = '1234';
+                deepEqual(b.value, true);
+                deepEqual(b._value, true);
+            });
+            test('...pub method: `Bool._parseValue`...', function () {
+                var b = new Bool();
+                deepEqual(b._parseValue('value'), true);
+                deepEqual(b._parseValue(123), true);
+                deepEqual(b._parseValue(123.123), true);
+                deepEqual(b._parseValue(true), true);
+            });
+            test("...pub method: `Bool.toSchema`...", function () {
+                var b = new Bool();
+                deepEqual(b.toSchema(), {type: "bool"});
+                var b = new Bool({value: 1234.1234, id: 'Mine'});
+                deepEqual(b.toSchema(), {id: 'Mine', type: "bool"});
+            });
+            test("...pub method: `Bool.validate`...", function () {
+                var b = new Bool();
+                deepEqual(b.validate(), true);
+                var b = new Bool({value: 1234567});
+                deepEqual(b.validate(), true);
+                var b = new Bool();
+                b._value = 'abcs';
+                throws(b.validate, Invalid);
             });
 
             // Group...
@@ -554,9 +902,9 @@ define(['qunit', 'elements'],
                     radio: false,
                     type: 'group'});
             });
-            test("...pub method: `Group.render`...", function () {
+            test("...pub method: `Group.toRender`...", function () {
                 var g1 = new Group();
-                deepEqual(g1.render(), []);
+                deepEqual(g1.toRender(), []);
             });
             test("...pub method: `Group.toDef`...", function () {
             });
