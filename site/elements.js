@@ -1,3 +1,18 @@
+"use strict";
+// Enable strict for everything. Other modules should be strict anyway or don't
+// use them...
+
+// http://stackoverflow.com/a/105074
+function s4() {
+  return Math.floor((1 + Math.random()) * 0x10000)
+             .toString(16)
+             .substring(1);
+};
+function guid() {
+  return s4() + s4() + '-' + s4() + '-' + s4() + '-' +
+         s4() + '-' + s4() + s4() + s4();
+}
+
 // http://stackoverflow.com/a/646643
 if (typeof String.prototype.startsWith != 'function') {
   String.prototype.startsWith = function (str){
@@ -71,7 +86,7 @@ var ArgumentError = function (message) {
 ArgumentError.prototype = new Error();
 
 // Should be obvious, but when parent class method or prop is not implements.
-NotImplementedError = function (message) {
+var NotImplementedError = function (message) {
     this.name = "NotImplementedError";
     this.message = (strf.apply(message, arguments) || "");
 };
@@ -91,9 +106,183 @@ var Inconsistent = function (message) {
 Inconsistent.prototype = new Error();
 
 
-// Base Class for everything. Very magical.
-var Elemental = function(opts) {
+var pack = function (inobj) {
+    var obj = _.clone(inobj),
+        id = obj.id,
+        outobj = {};
+    delete obj.id;
+    outobj[id] = obj;
+    return outobj;
+};
+
+var unpack = function (inobj) {
+    var obj;
+    for (var key in inobj) {
+        if (obj) {
+            throw new ValueError("unpack(inobj) expected single property object.");
+        }
+        obj = inobj[key];
+        obj.id = key;
+    }
+    return obj;
+}
+
+// an Elemental Object. This is the serializable data component of a
+//  single "Elemental"
+
+// Nope
+var ElementalObject = function (opts) {
     _.extend(this, {
+        type: 'elemental',
+        id: undefined,
+        label: undefined,
+        value: undefined,
+        show: undefined,
+        required: undefined,
+        lockable: undefined,
+        locked: undefined,
+        parents: [],
+        children: [],
+        collection: undefined
+    });
+}
+
+
+// Base Class for everything. Very magical.
+var Elemental = function (opts) {
+    _.extend(this, {
+        //
+        _add_child: function (child) { // tested (decent coverage)
+            if (this._children.indexOf(child) < 0) {
+                this._children.push(child);
+            } 
+            else {
+                throw new ValueError("Elemental._add_child: %s already " +
+                    "has %s as a member.", this.toString(), child.toString());
+            }
+        },
+        //
+        _del_child: function (child) { // tested (decent coverage)
+            var i = this._children.indexOf(child);
+            if (i >= 0) {
+                this._children.splice(i, 1);
+            }
+            else {
+                throw new ValueError("Elemenetal._del_child: %s doesn't " +
+                    "have %s as a member.", this.toString(), child.toString());
+            }
+        },
+        //
+        _add_parent: function (parent) { // tested (decent coverage)
+            if (this._parents.indexOf(parent) < 0) {
+                this._parents.push(parent);
+            }
+            else {
+                throw new ValueError("Elemental._add_parent: %s already " +
+                    "has %s as a parent.", this.toString(), parent.toString());
+            }
+        },
+        //
+        _del_parent: function (parent) { // tested (decent coverage)
+            var i = this._parents.indexOf(parent);
+            if (i >= 0) {
+                this._parents.splice(i, 1);
+            }
+            else {
+                throw new ValueError("Elemenetal._del_parent: %s doesn't " +
+                    "have %s as a parent.", this.toString(), parent.toString());
+            }
+        },
+        // Get a property value.
+        // Empty, missing or null values requires a `nullGetter` to return something.
+        //
+        //  Example implementation to return null on missing values:
+        //      return e._getProp(key, function() { return null; });
+        //
+        // Throws ValueError if value is null and `nullGetter` isn't callable.
+        // Throws ValueError if property is a function.
+        _getProp: function (propKey, missing, empty) {
+            var propVal = this[propKey],
+                missingFunc,
+                emptyFunc;
+
+            if (typeof missing === "function") {
+                missingFunc = missing;
+            }
+            else {
+                missingFunc = function () { return missing; };
+            }
+
+            if (typeof empty === "function") {
+                emptyFunc = empty;
+            }
+            else if (empty) {
+                emptyFunc = function () { return empty; }
+            }
+            else {
+                emptyFunc = missing;
+            }
+
+            // Property is missing or otherwise undefined.
+            if (propVal === undefined) {
+                return missingFunc.call(this, propKey);
+            }
+            // Property is null or empty.
+            else if (propVal === null || isEmpty(propVal)) {
+                return emptyFunc.call(this, propKey);
+            }
+            // Property is a function.
+            else if (typeof propVal === "function") {
+                throw new ValueError("Elemental._getProp: Property `" +
+                                        propKey + "` is a function.");
+            }
+            // Propety should be a value value.
+            else {
+                return propVal;
+            }
+        },
+        // Return this object properties from `propList` Array of property keys.
+        _getProps: function(propList, includeAll) { // *tested (ok coverage)
+            propList = propList || ['id'];
+            var outobj = {};
+            for (var w in propList) {
+                var propName = propList[w];
+                outobj[propName] = this._getProp(propName);
+            }
+            return outobj;
+        },
+        // Attempt to get local property value. If null or undefined,
+        // Then distill up through the parents for the property..
+        _distillProperty: function (key) { // *tested (decent coverage)
+            var that = this;
+            function getter(key) {
+                var value,
+                    i = 0;
+                while(i < that._parents.length && !value) {
+                    var parent = that._parents[i];
+                    value = parent._distillProperty(key);
+                    i++;
+                }
+                return value;
+            }
+            return this._getProp(key, getter);
+        },
+        // Attempt to get local property value. If null or undefined,
+        // Then percolate down through the children for the property.
+        _percolateProperty: function (key) {
+            var that = this;
+            function getter(key) {
+                var value,
+                    i = 0;
+                while(i < that._children.length && !value) {
+                    var child = that._children[i];
+                    value = child._percolateProperty(key);
+                    i++;
+                }
+                return value;
+            }
+            return this._getProp(key, getter);
+        },
         // Another simple string formater that accepts {tokens} to retrieve properties
         //  of the same name.
         // example:
@@ -132,41 +321,57 @@ var Elemental = function(opts) {
             }
             return def;
         },
-        // Pack and return the schema of this DataPoint.
-        _toSchema: function(whitelist, includeAll) { // *tested (ok coverage)
-            var outobj = {};
-            if (!whitelist) {
-                throw new ArgumentError("toSchema requires a `whitelist` of property names.");
+        // Collects `children` and distills them in to `obj`.
+        _distill: function (additional) {
+            var obj = {},
+                children = {ord: []};
+            
+            for (var i=0; i<this._children.length; i++) {
+                var child = this._children[i],
+                    distillation = child._distill.apply(child, arguments);
+                children.ord.push(distillation);
+                children[child.id] = distillation;
             }
-            for (var w in whitelist) {
-                if (this.hasOwnProperty(whitelist[w])) {
-                    var propVal = this[whitelist[w]];
-                    if (includeAll || (propVal !== undefined && isEmpty(propVal) !== true)) {
-                        outobj[whitelist[w]] = propVal;
-                    }
-                    else {
-                        // Do something?
-                    }
-                }
+
+            obj.children = children;
+            return _.extend(obj, this._getProps(additional || []));
+        },
+        // Collects `parents` and percolates them in to an object.
+        _percolate: function (additional) {
+            var obj = {},
+                parents = {ord: []};
+            for (i=0; i<this._parents.length; i++) {
+                var parent = this._parents[i],
+                    percolation = child._percolate.apply(parent, arguments);
+                parents.ord.push(percolation);
+                parents[parent.id] = percolation;
             }
-            return outobj;
+            obj.parents = parents;
+            return _.extend(obj, this._getProps(additional || []));
         }
     });
+    
     this.init(opts);
 };
 
 Elemental.prototype.init = function (opts) {
     _.extend(this, {
-        id: undefined,
         _type: 'elemental',
+        _id: guid(),
         _label: undefined,
         _value: undefined,
         _show: undefined,
         _required: undefined,
-        _collection: {},
         _lockable: false,
-        _locked: false
+        _locked: false,
+        _parents: [],
+        _children: [],
+        _collection: {},
     }, opts);
+
+    this._props = ['_type', '_id', '_label', '_value', '_show', '_required',
+                    '_lockable', '_locked'];
+
     return this;
 };
 
@@ -177,9 +382,11 @@ Elemental._decConsistent = function (func, errMessage) { // tested (decent cover
     }
 
     return function () {
+        // Throw exception on locked Elemental.
         if (this._locked === true) {
             exc();
         }
+        // Throw exception on show/required mismatch.
         else if (this._show === false && this._required === true) {
             exc();
         }
@@ -191,6 +398,26 @@ Elemental._decConsistent = function (func, errMessage) { // tested (decent cover
 
 // Properties...
 // -------------
+Object.defineProperty(Elemental.prototype, 'id', {
+    enumerable: true,
+    configurable: true,
+    writeable: false,
+    get: function () {
+        return this._id;
+    },
+    // Set `id`. Reserve some namespaces.
+    set: function (value) {
+        var reserved = ['ord'],
+            i = reserved.indexOf(value);
+        if (i >= 0) {
+            throw ValueError('Invalid value for Elemental.id; "' + reserved[i] + '".');
+        }
+        else {
+            this._id = value || guid();
+        }
+    }
+});
+
 Object.defineProperty(Elemental.prototype, 'type', {
     enumerable: true,
     configurable: true,
@@ -284,7 +511,7 @@ Object.defineProperty(Elemental.prototype, 'collection', { // tested! (decent co
     enumerable: true,
     configurable: true,
     set: function (collection) {
-        if (collection instanceof PointCollection) {
+        if (collection instanceof PointCollection || _.isEqual(collection, {})) {
             this._collection = collection;
         }
         else {
@@ -330,6 +557,46 @@ Object.defineProperty(Elemental.prototype, 'locked', {
     }
 });
 
+// `children` property implementation.
+Elemental.prototype._childrenGetter = function () {
+    return this._children;
+};
+Elemental.prototype._childrenSetter = function (value) {
+    // Validate the input `value`. Expects an Array of Elemental objects.
+    this._children = [];
+    for (var i=0; i<value.length; i++) {
+        var child = value[i];
+        this.add_child(child);
+    }
+};
+Object.defineProperty(Elemental.prototype, 'children', {
+    enumerable: true,
+    configurable: true,
+    writeable: false,
+    get: Elemental.prototype._childrenGetter,
+    set: Elemental.prototype._childrenSetter
+});
+
+// `parents` property implementation.
+Elemental.prototype._parentsGetter = function () {
+    return this._parents;
+};
+Elemental.prototype._parentsSetter = function (value) {
+    // Validate the input `value`. Expects an Array of Elemental objects.
+    this._parents = [];
+    for (var i=0; i<value.length; i++) {
+        var parent = value[i];
+        this.add_parent(parent);
+    }
+};
+Object.defineProperty(Elemental.prototype, 'parents', {
+    enumerable: true,
+    configurable: true,
+    writeable: false,
+    get: Elemental.prototype._parentsGetter,
+    set: Elemental.prototype._parentsSetter
+});
+
 Elemental.prototype._prepValue = function (value) {
     if (value === undefined) {
         return null;
@@ -345,10 +612,77 @@ Elemental.prototype._parseValue = function (value) { // tested! (decent coverage
     return value;
 };
 
+var _lookupExc = function (funcName) {
+    throw new AttributeError(funcName + ": expected an Elemental object or a " + 
+        "string key to `collection.objects`.");
+}
+
+// Add a child Elemental.
+Elemental.prototype.add_child = function (child) {
+    if(!(child instanceof Elemental)) {
+        _lookupExc(".add_child");
+    }
+    else if (typeof child === "string" && this._collection.objects) {
+        child = this._collection.objects[child];
+    }
+    child._add_parent(this);
+    this._add_child(child);
+};
+
+// Delete a child Elemental.
+Elemental.prototype.del_child = function (child) {
+    if (!(child instanceof Elemental)) {
+        _lookupExc(".del_child");
+    }
+    else if (typeof child === "string" && this._collection.objects) {
+        child = this._collection.objects[child];
+    }
+    child._del_parent(this);
+    this._del_child(child);
+};
+
+// Add a parent Elemental.
+Elemental.prototype.add_parent = function (parent) {
+    if(!(parent instanceof Elemental)) {
+        _lookupExc(".add_parent");
+    }
+    else if (typeof parent === "string" && this._collection.objects) {
+        parent = this._collection.objects[parent];
+    }
+    parent._add_child(this);
+    this._add_parent(parent);
+};
+
+// Delete a parent Elemental.
+Elemental.prototype.del_parent = function (parent) {
+    if(!(parent instanceof Elemental)) {
+        _lookupExc(".del_parent");
+    }
+    else if (typeof parent === "string" && this._collection.objects) {
+        parent = this._collection.objects[parent];
+    }
+    parent._del_child(this);
+    this._del_parent(parent);
+};
+
+// Destroy this Elemental.
+Elemental.prototype.destroy = function () {
+    // Instruct children of the destruction of this Elemental.
+    for (var i=0; i<this._children.length; i++) {
+        var child = this._children[i];
+        child._del_parent(this);
+    }
+    // Instruct parents of the destruction of this Elemental.
+    for (var i=0; i<this._parents.length; i++) {
+        var parent = this._parents[i];
+        parent._del_child(this);
+    }
+    this.init(); // Simply init the object.
+}
+
 // Validate the object.
-// (Implemented in sub-classe prototypes.)
+// (Implemented in sub-class prototypes.)
 Elemental.prototype.validate = function () { // tested! (full coverage)
-    //
     throw new NotImplementedError("Elemental.validate is not implemented.");
 };
 
@@ -373,17 +707,38 @@ Elemental.prototype.toString = function () { // tested! (decent coverage)
 };
 
 // Pack and return the schema of this DataPoint.
+// Schema is the definition of this elemental. Unmodified.
 Elemental.prototype.toSchema = function (additional) { // tested! (some coverage)
     additional = additional || [];
-    return this._toSchema(['id', 'type', '_label', '_show', 'show', '_required', 'required'].concat(additional));
+    return this._getProps(['_id', '_type', '_label', '_show', '_required'].concat(additional));
 };
 
 // Adhere to is_shown criteria. Returns schema and value.
 Elemental.prototype.toRender = function (additional) { // tested! (some coverage)
     if (this.show === true) {
-        additional = additional || [];
-        return [this._toSchema(['id', 'type', 'label', 'required', 'value'].concat(additional))];
+        return [this._getProps(['id', 'type', 'label', 'required', 'value'].concat(additional || []))];
     } 
+    else {
+        return [];
+    }
+};
+
+// Initiate a render and distill upward through the chain.
+Elemental.prototype.distill = function (additional) {
+    if (this.show === true) {
+        var thisobj = this._getProps(['id', 'type', 'label', 'required', 'value'].concat(additional || []));
+
+    }
+    else {
+        return [];
+    }
+};
+
+// Initiate a render and percolate downward through the chain.
+Elemental.prototype.percolate = function (additional) {
+    if (this.show === true) {
+
+    }
     else {
         return [];
     }
@@ -397,46 +752,9 @@ Elemental.prototype.onupdate = function () {
     // pass
 };
 
-
 // Data Point Base object.
 // The bulk of the "Point" implementation is here.
 var Point = function (opts) {
-    _.extend(this, {
-        // Determines whether to retreive a property from the group or from
-        // this point. (Used for `show` and `required`).
-        _group_or_point_property: function (property) { // *tested (decent coverage)
-            if (this[property] === undefined || this[property] === null) {
-                var value;
-                for (var i=0; i<this._groups.length; i++) {
-                    var group = this._groups[i];
-                    value = value || group[property];
-                }
-                return value;
-            }
-            else {
-                return this[property];
-            }
-        },
-        // _internal: Do actual addition of group.
-        _add_group: function (group) { // *tested (ok coverage)
-            if (this._groups.indexOf(group) < 0) {
-                this._groups.push(group);
-            }
-            else {
-                throw new ValueError("This point (id: %s) is already in Group (id: %s).", this.id, group.id);
-            }
-        },
-        // Do actual delete of group.
-        _del_group: function (group) { // *tested (ok coverage)
-            var i = this._groups.indexOf(group);
-            if (i >= 0) {
-                this._groups.splice(i, 1);
-            }
-            else {
-                throw new ValueError("This point (id: %s) is not in Group (id: %s).", this.id, group.id);
-            }
-        },
-    });
     this.init(opts);
 };
 
@@ -451,8 +769,7 @@ Point.prototype.constructor = Point;
 Point.prototype.init = function (opts) { // needs tests??
     Elemental.prototype.init.call(this);
     _.extend(this, {
-        _type: 'point',
-        _groups: []
+        _type: 'point'
     }, opts);
     return this; // for convenience only.
 };
@@ -465,7 +782,7 @@ Object.defineProperty(Point.prototype, 'show', { // tested! (decent coverage)
     configurable: true,
     writeable: false,
     get: function () {
-        var value = this._group_or_point_property('_show');
+        var value = this._distillProperty('_show');
         return Elemental.prototype._prepValue.call(this, value);
     },
     set: Elemental.prototype._showSetter
@@ -477,40 +794,19 @@ Object.defineProperty(Point.prototype, 'required', { // tested! (decent coverage
     configurable: true,
     writeable: false,
     get: function () {
-        var value = this._group_or_point_property('_required');
+        var value = this._distillProperty('_required');
         return Elemental.prototype._prepValue.call(this, value);
     },
     set: Elemental.prototype._requiredSetter
 });
 
-// `groups` property implementation.    
-// `groups` returns simply the list of groups.
-// `groups` may be set with an Array of group names, provided a `collection`
-//  has been assigned. It may also be set with an Array of Group objects, or
-//  a mix of the two.
-Object.defineProperty(Point.prototype, 'groups', { // tested! (1/2 coverage)
+// Synonym to Elemental.parents.
+Object.defineProperty(Point.prototype, 'groups', { // tested
     enumerable: true,
     configurable: true,
-    get: function () {
-        return this._groups;
-    },
-    set: function (groups) {
-        // Validate and update groups.
-        for (var i=0; i<groups.length; i++) {
-            var group = groups[i];
-
-            // Group item is a `Group` object.
-            if (group instanceof Group) {
-                this.add_group(group);
-            } // Group item is a string key.
-            else if (typeof group === "string" && this._collection.objects) {
-                this.add_group(this._collection.objects[group]);
-            }
-            else {
-                throw new AttributeError("Point.groups expected groups as array of Group objects or an array of string keys to `collection.objects`.");
-            }
-        }
-    }
+    writeable: false,
+    get: Elemental.prototype._parentsGetter,
+    set: Elemental.prototype._parentsSetter
 });
 
 // Public Methods...
@@ -550,22 +846,20 @@ Point.prototype.toDef = function (schema, additional) { // tested! (little cover
 // @group   Group   Group object add the point to.
 Point.prototype.add_group = function (group, collection) { // Implement collection search later.
     if (group instanceof Group) {
-        this._add_group(group);
-        group._add_point(this);
+        this.add_parent(group);
     }
     else {
-        throw new ValueError("Point.add_group expected a Group object.");
+        throw new ValueError("Point.add_group: expected a Group object.");
     }
 };
 
 // Delete this 'point' from group.
 Point.prototype.del_group = function (group, collection) { // Implement collection search later.
     if (group instanceof Group) {
-        this._del_group(group);
-        group._del_point(this, true);
+        this.del_parent(group);
     }
     else {
-        throw new ValueError("Point.del_group expected a Group object.")
+        throw new ValueError("Point.del_group: expected a Group object.")
     }
 };
 
@@ -576,8 +870,8 @@ Point.prototype.onupdate = function () {
         this._collection.onupdate(this);
     }
     // Run "onupdate" on any groups.
-    for (var i in this._groups) {
-        var group = this._groups[i];
+    for (var i in this._parents) {
+        var group = this._parents[i];
         group.onupdate(this);
     }
 };
@@ -747,25 +1041,7 @@ List.prototype.validate = function () {
 //
 var Group = function (opts) {
     _.extend(this, {
-        //
-        _add_point: function (point) { // tested (decent coverage)
-            if (this.members.indexOf(point) < 0) {
-                this.members.push(point);
-            } 
-            else {
-                throw new ValueError("Group (id: %s) already has Point (id: %s) as a member", this.id, point.id);
-            }
-        },
-        //
-        _del_point: function (point) { // tested (decent coverage)
-            var i = this.members.indexOf(point);
-            if (i >= 0) {
-                this.members.splice(i, 1);
-            }
-            else {
-                throw new ValueError("Group (id: %s) doesn't have Point (id: %s) as a member.", this.id, point.id);
-            }
-        },
+
     });
     this.init(opts);
 };
@@ -780,8 +1056,7 @@ Group.prototype.init = function (opts) {
         _type: 'group',
         radio: false, // all members must be bool. ?? why?
         show: false,
-        required: false,
-        _members: []
+        required: false
     }, opts);
     return this; // for convenience only.
 };
@@ -791,26 +1066,10 @@ Group.prototype.init = function (opts) {
 Object.defineProperty(Group.prototype, 'members', { // tested (some coverage)
     enumerable: true,
     configurable: true,
-    get: function () {
-        return this._members;
-    },
-    set: function (members) {
-        for (var i=0; i<members.length; i++) {
-            var member = members[i];
-
-            if(member instanceof Point) {
-                this.add_point(member);
-            }
-            else if (typeof member === "string" && this._collection.objects) {
-                this.add_point(this._collection.objects[member])
-            }
-            else {
-                throw new AttributeError("Group.members expected an array of Point objects or an array of string keys to `collection.objects'.");
-            }
-        }
-    }
+    writeable: false,
+    get: Elemental.prototype._childrenGetter,
+    set: Elemental.prototype._childrenSetter
 });
-
 
 // Pack and return the schema of this DataPoint.
 Group.prototype.toSchema = function (additional) { // tested (some coverage)
@@ -869,8 +1128,8 @@ Group.prototype.validate = function () { // tested (light coverage)
 //
 Group.prototype.add_point = function (point, collection) { // tested (decent coverage)
     if (point instanceof Point) {
-        this._add_point(point);
-        point._add_group(this);
+        this._add_child(point);
+        point._add_parent(this);
     } 
     else {
         throw new ArgumentError('Group.add_point expected a `Point` object.');
@@ -879,8 +1138,8 @@ Group.prototype.add_point = function (point, collection) { // tested (decent cov
 //
 Group.prototype.del_point = function (point) { // tested (decent coverage)
     if (point instanceof Point) {
-        this._del_point(point);
-        point._del_group(this, true);
+        this._del_child(point);
+        point._del_parent(this, true);
     }
     else {
         throw new ArgumentError('Group.del_point expected a `Point` object.');
@@ -914,7 +1173,7 @@ var PointCollection = function (opts) {
         // Group definitions to Group objects.
         // @param   groups  Array   Group definitions.
         _addGroupDefs: function (groups) {
-            for (id in groups) {
+            for (var id in groups) {
                 var group = groups[id];
                 group.id = id;
                 group.collection = this;
