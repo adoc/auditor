@@ -108,9 +108,11 @@ Inconsistent.prototype = new Error();
 
 var pack = function (inobj) {
     var obj = _.clone(inobj),
-        id = obj.id,
+        id = obj._id || obj.id,
         outobj = {};
-    delete obj.id;
+    delete obj.id,
+            obj._id;
+
     outobj[id] = obj;
     return outobj;
 };
@@ -125,6 +127,16 @@ var unpack = function (inobj) {
         obj.id = key;
     }
     return obj;
+};
+
+// return a null value if undefined. 
+var coerceValue = function (value) {
+    if (value === undefined) {
+        return null;
+    }
+    else {
+        return value;
+    }
 }
 
 // an Elemental Object. This is the serializable data component of a
@@ -152,46 +164,84 @@ var ElementalObject = function (opts) {
 var Elemental = function (opts) {
     _.extend(this, {
         //
-        _add_child: function (child) { // tested (decent coverage)
+        _addChild: function (child) { // tested (decent coverage)
             if (this._children.indexOf(child) < 0) {
                 this._children.push(child);
             } 
             else {
-                throw new ValueError("Elemental._add_child: %s already " +
+                throw new ValueError("Elemental._addChild: %s already " +
                     "has %s as a member.", this.toString(), child.toString());
             }
         },
         //
-        _del_child: function (child) { // tested (decent coverage)
+        _delChild: function (child) { // tested (decent coverage)
             var i = this._children.indexOf(child);
             if (i >= 0) {
                 this._children.splice(i, 1);
             }
             else {
-                throw new ValueError("Elemenetal._del_child: %s doesn't " +
+                throw new ValueError("Elemenetal._delChild: %s doesn't " +
                     "have %s as a member.", this.toString(), child.toString());
             }
         },
         //
-        _add_parent: function (parent) { // tested (decent coverage)
+        _addParent: function (parent) { // tested (decent coverage)
             if (this._parents.indexOf(parent) < 0) {
                 this._parents.push(parent);
             }
             else {
-                throw new ValueError("Elemental._add_parent: %s already " +
+                throw new ValueError("Elemental._addParent: %s already " +
                     "has %s as a parent.", this.toString(), parent.toString());
             }
         },
         //
-        _del_parent: function (parent) { // tested (decent coverage)
+        _delParent: function (parent) { // tested (decent coverage)
             var i = this._parents.indexOf(parent);
             if (i >= 0) {
                 this._parents.splice(i, 1);
             }
             else {
-                throw new ValueError("Elemenetal._del_parent: %s doesn't " +
+                throw new ValueError("Elemenetal._delParent: %s doesn't " +
                     "have %s as a parent.", this.toString(), parent.toString());
             }
+        },
+        // Another simple string formater that accepts {tokens} to retrieve properties
+        //  of the same name.
+        // example:
+        //  var obj = {
+        //      thing: 'foo',
+        //      whatis: 'bar'
+        //  };
+        //  ._parseDef(obj, 'My {thing} is {whatis}.')
+        //  ==="My foo is bar.";
+        _parseDef: function (string, escape) { // *tested! (decent coverage)
+            var match,
+                reToken = new RegExp('\{([a-zA-Z0-9]+)\}', 'g'),
+                that = this;
+
+            return string.replace(reToken, function(match, text) {
+                var val = that[text];
+                if (escape === true) {
+                    if (typeof val === 'string') {
+                        val = '"' + val + '"';
+                    }
+                }
+                return val;
+            });
+        },
+        // Parse incoming conditions, replacing tokens.
+        _parseCondition: function(def) { // *tested (decent coverage)
+            // handle "in"
+            var in_split = def.split(' in ');
+            if (in_split.length == 2) {
+                def = in_split[1] + '.indexOf(' + in_split[0] + ') >= 0';
+            }
+            def = def.replace('True', 'true');
+            def = def.replace('False', 'false');
+            if (def.indexOf('===') < 0) {
+                def = def.replace('==', '===');
+            }
+            return def;
         },
         // Get a property value.
         // Empty, missing or null values requires a `nullGetter` to return something.
@@ -220,7 +270,7 @@ var Elemental = function (opts) {
                 emptyFunc = function () { return empty; }
             }
             else {
-                emptyFunc = missing;
+                emptyFunc = missingFunc;
             }
 
             // Property is missing or otherwise undefined.
@@ -247,20 +297,23 @@ var Elemental = function (opts) {
             var outobj = {};
             for (var w in propList) {
                 var propName = propList[w];
-                outobj[propName] = this._getProp(propName);
+                var val = this._getProp(propName);
+                if (val !== undefined && val !== null) {
+                    outobj[propName] = val;
+                }
             }
             return outobj;
         },
         // Attempt to get local property value. If null or undefined,
         // Then distill up through the parents for the property..
-        _distillProperty: function (key) { // *tested (decent coverage)
+        _distillProp: function (key) { // *tested (decent coverage)
             var that = this;
             function getter(key) {
                 var value,
                     i = 0;
                 while(i < that._parents.length && !value) {
                     var parent = that._parents[i];
-                    value = parent._distillProperty(key);
+                    value = parent._distillProp(key);
                     i++;
                 }
                 return value;
@@ -269,92 +322,88 @@ var Elemental = function (opts) {
         },
         // Attempt to get local property value. If null or undefined,
         // Then percolate down through the children for the property.
-        _percolateProperty: function (key) {
+        _percolateProp: function (key) {
             var that = this;
             function getter(key) {
                 var value,
                     i = 0;
                 while(i < that._children.length && !value) {
                     var child = that._children[i];
-                    value = child._percolateProperty(key);
+                    value = child._percolateProp(key);
                     i++;
                 }
                 return value;
             }
             return this._getProp(key, getter);
         },
-        // Another simple string formater that accepts {tokens} to retrieve properties
-        //  of the same name.
-        // example:
-        //  var obj = {
-        //      thing: 'foo',
-        //      whatis: 'bar'
-        //  };
-        //  ._parse_def(obj, 'My {thing} is {whatis}.')
-        //  ==="My foo is bar.";
-        _parse_def: function (string, escape) { // *tested! (decent coverage)
-            var match,
-                reToken = new RegExp('\{([a-zA-Z0-9]+)\}', 'g'),
-                that = this;
+        // Collects this object and its `parents` and distills them in to an
+        // object.
+        // TODO: Refactor this badly...
+        _distillMap: function (func, additional) {
+            var outObj = {},
+                obj = {},
+                parents = {ord: []},
+                additional = additional || [],
+                ia = additional.indexOf('id');
 
-            return string.replace(reToken, function(match, text) {
-                var val = that[text];
-                if (escape === true) {
-                    if (typeof val === 'string') {
-                        val = '"' + val + '"';
-                    }
+            // Strip out 'id' if there.
+            if (ia >= 0) {
+                additional = additional.splice(ia, 1);
+            }
+
+            for (var i=0; i<this._parents.length; i++) {
+                var parent = this._parents[i],
+                    percolation = parent._distillMap.apply(parent, arguments);
+                if (!isEmpty(percolation)) {
+                    parents.ord.push(percolation);
+                    _.extend(parents, percolation);
                 }
-                return val;
-            });
-        },
-        // Parse incoming conditions, replacing tokens.
-        _parse_condition: function(def) { // *tested (decent coverage)
-            // handle "in"
-            var in_split = def.split(' in ');
-            if (in_split.length == 2) {
-                def = in_split[1] + '.indexOf(' + in_split[0] + ') >= 0';
             }
-            def = def.replace('True', 'true');
-            def = def.replace('False', 'false');
-            if (def.indexOf('===') < 0) {
-                def = def.replace('==', '===');
+
+            if (!isEmpty(parents.ord)) {
+                obj.parents = parents;
             }
-            return def;
+
+            outObj[this.id] = _.extend(obj, func.call(this, additional || []));
+            return outObj;
         },
-        // Collects `children` and distills them in to `obj`.
-        _distill: function (additional) {
-            var obj = {},
-                children = {ord: []};
-            
+        // Collects this object and its `children` and percolates them in to an
+        // object.
+        _percolateMap: function (func, additional) {
+            var outObj = {},
+                obj = {},
+                children = {ord: []},
+                additional = additional || [],
+                ia = additional.indexOf('id');
+
+            // Strip out 'id' if there.
+            if (ia >= 0) {
+                additional = additional.splice(ia, 1);
+            }
+
             for (var i=0; i<this._children.length; i++) {
                 var child = this._children[i],
-                    distillation = child._distill.apply(child, arguments);
-                children.ord.push(distillation);
-                children[child.id] = distillation;
+                    distillation = child._percolateMap.apply(child, arguments);
+                
+                if (!isEmpty(distillation)) {
+                    children.ord.push(distillation);
+                    _.extend(children, distillation);
+                }
             }
 
-            obj.children = children;
-            return _.extend(obj, this._getProps(additional || []));
-        },
-        // Collects `parents` and percolates them in to an object.
-        _percolate: function (additional) {
-            var obj = {},
-                parents = {ord: []};
-            for (i=0; i<this._parents.length; i++) {
-                var parent = this._parents[i],
-                    percolation = child._percolate.apply(parent, arguments);
-                parents.ord.push(percolation);
-                parents[parent.id] = percolation;
+            // Lets only add children if there are.
+            if (!isEmpty(children.ord)) {
+                obj.children = children;
             }
-            obj.parents = parents;
-            return _.extend(obj, this._getProps(additional || []));
+
+            return _.extend(obj, func.call(this, additional || []));
         }
     });
     
-    this.init(opts);
+    this._init(opts);
 };
 
-Elemental.prototype.init = function (opts) {
+Elemental.prototype._init = function (opts) {
     _.extend(this, {
         _type: 'elemental',
         _id: guid(),
@@ -398,40 +447,44 @@ Elemental._decConsistent = function (func, errMessage) { // tested (decent cover
 
 // Properties...
 // -------------
+Elemental.prototype._idGetter = function () {
+    return this._id;
+};
+// Set `id`. Reserve some namespaces.
+Elemental.prototype._idSetter = function (value) {
+    var reserved = ['ord'],
+        i = reserved.indexOf(value);
+    if (i >= 0) {
+        throw new ValueError('Invalid value for Elemental.id; "' + reserved[i] + '".');
+    }
+    else {
+        this._id = value || guid();
+    }
+};
 Object.defineProperty(Elemental.prototype, 'id', {
     enumerable: true,
     configurable: true,
     writeable: false,
-    get: function () {
-        return this._id;
-    },
-    // Set `id`. Reserve some namespaces.
-    set: function (value) {
-        var reserved = ['ord'],
-            i = reserved.indexOf(value);
-        if (i >= 0) {
-            throw ValueError('Invalid value for Elemental.id; "' + reserved[i] + '".');
-        }
-        else {
-            this._id = value || guid();
-        }
-    }
+    get: Elemental.prototype._idGetter,
+    set: Elemental.prototype._idSetter
 });
 
+Elemental.prototype._typeGetter = function () {
+    return this._type;
+};
 Object.defineProperty(Elemental.prototype, 'type', {
     enumerable: true,
     configurable: true,
     writeable: false,
-    get: function () {
-        return this._type;
-    }
+    get: Elemental.prototype._typeGetter
 });
 
 // `label` property.
 // `label` returns an expression-parsed representation of the label.
 Elemental.prototype._labelGetter = function () {
-    return this._prepValue(this._label) &&
-            this._parse_def(this._label);
+    //return this._getValue(this._label) &&
+    //        this._parseDef(this._label);
+    return this._label && this._parseDef(this._label);
 };
 Elemental.prototype._labelSetter = Elemental._decConsistent(
     function (value) {
@@ -448,14 +501,16 @@ Object.defineProperty(Elemental.prototype, 'label', { // tested! (decent coverag
 
 // `value` property implementation.
 // `value` returns the value.
-// `value`, when set, will execute the ._parseValue method and trigger the
+// `value`, when set, will execute the ._setValue method and trigger the
 //  iternal onupdate event.
 Elemental.prototype._valueGetter = function () {
-    return this._prepValue(this._value);
+    // Invoke subclass ._getValue.
+    return this._getValue(this._value);
 };
 Elemental.prototype._valueSetter = Elemental._decConsistent(
     function (value) {
-        value = this._parseValue(value); // another way to do this??
+        // Invoke subclass ._setValue.
+        value = this._setValue(value);
         // Only if value has changed.
         if (value !== this._value) {
             this._value = value;
@@ -472,7 +527,7 @@ Object.defineProperty(Elemental.prototype, 'value', { // tested! (decent coverag
 });
 //
 Elemental.prototype._showGetter = function () {
-    return this._prepValue(this._show);
+    return coerceValue(this._show);
 };
 Elemental.prototype._showSetter = Elemental._decConsistent(
     function (value) {
@@ -489,7 +544,7 @@ Object.defineProperty(Elemental.prototype, 'show', {
 
 //
 Elemental.prototype._requiredGetter = function () {
-    return this._prepValue(this._required);
+    return coerceValue(this._required);
 };
 Elemental.prototype._requiredSetter = Elemental._decConsistent(
         function (value) {
@@ -507,54 +562,60 @@ Object.defineProperty(Elemental.prototype, 'required', { // tested! (decent cove
 // `collection` property implementation.
 // `collection` simply returns the collection assigned.
 // `collection` may be set with a `PointCollection` object.
+Elemental.prototype._collectionSetter = function (collection) {
+    if (collection instanceof PointCollection ||
+            _.isEqual(collection, {})) {
+        this._collection = collection;
+    }
+    else {
+        throw new ValueError("Point.collection expected a `PointCollection` object.");
+    }
+};
 Object.defineProperty(Elemental.prototype, 'collection', { // tested! (decent coverage)
     enumerable: true,
     configurable: true,
-    set: function (collection) {
-        if (collection instanceof PointCollection || _.isEqual(collection, {})) {
-            this._collection = collection;
-        }
-        else {
-            throw new ValueError("Point.collection expected a `PointCollection` object.");
-        }
-    }
+    set: Elemental.prototype._collectionSetter
 });
 
 // `lockable` property.
+Elemental.prototype._lockableGetter = function () {
+    return coerceValue(this._lockable);
+};
+Elemental.prototype._lockableSetter = function (value) {
+    this._lockable = value;
+    if (value !== true) {
+        this._locked = false;
+    }
+};
 Object.defineProperty(Elemental.prototype, 'lockable', {
     enumerable: true,
     configurable: true,
     writeable: false,
-    get: function () {
-        return this._lockable;
-    },
-    set: function (value) {
-        this._lockable = value;
+    get: Elemental.prototype._lockableGetter,
+    set: Elemental.prototype._lockableSetter
+});
+
+// `locked` property.
+Elemental.prototype._lockedGetter = function () {
+    return coerveValue(this._locked);
+};
+Elemental.prototype._lockedSetter = function (value) {
+    if (this.lockable === true) {
+        this._locked = value;
         if (value !== true) {
             this._locked = false;
         }
     }
-});
-
-// `locked` property.
+    else {
+        this._locked = false;
+    }
+};
 Object.defineProperty(Elemental.prototype, 'locked', {
     enumerable: true,
     configurable: true,
     writeable: false,
-    get: function () {
-        return this._locked;
-    },
-    set: function (value) {
-        if (this.lockable === true) {
-            this._locked = value;
-            if (value !== true) {
-                this._locked = false;
-            }
-        }
-        else {
-            this._locked = false;
-        }
-    }
+    get: Elemental.prototype._lockedGetter,
+    set: Elemental.prototype._lockedSetter
 });
 
 // `children` property implementation.
@@ -566,7 +627,7 @@ Elemental.prototype._childrenSetter = function (value) {
     this._children = [];
     for (var i=0; i<value.length; i++) {
         var child = value[i];
-        this.add_child(child);
+        this.addChild(child);
     }
 };
 Object.defineProperty(Elemental.prototype, 'children', {
@@ -586,7 +647,7 @@ Elemental.prototype._parentsSetter = function (value) {
     this._parents = [];
     for (var i=0; i<value.length; i++) {
         var parent = value[i];
-        this.add_parent(parent);
+        this.addParent(parent);
     }
 };
 Object.defineProperty(Elemental.prototype, 'parents', {
@@ -597,19 +658,30 @@ Object.defineProperty(Elemental.prototype, 'parents', {
     set: Elemental.prototype._parentsSetter
 });
 
-Elemental.prototype._prepValue = function (value) {
-    if (value === undefined) {
-        return null;
-    }
-    else {
-        return value;
-    }
-};
+Elemental.prototype._getValue = coerceValue;
 
 // Pass-through in the base class.
 // (Check subclasses for actual implementations.)
-Elemental.prototype._parseValue = function (value) { // tested! (decent coverage)
+Elemental.prototype._setValue = function (value) { // tested! (decent coverage)
     return value;
+};
+
+// Pack and return the schema of this DataPoint.
+// Schema is the definition of this elemental. Unmodified.
+Elemental.prototype._toSchema = function (additional) { // tested! (some coverage)
+    return this._getProps(['_id', '_type', '_label', '_show',
+                            '_required'].concat(additional || []));
+};
+
+// Render if shown.
+Elemental.prototype._toRender = function (additional) {
+    if (this.show === true) {
+        return pack(this._getProps(['id', 'type', 'label', 'required',
+                                'value'].concat(additional || [])));
+    }
+    else {
+        return {};
+    }
 };
 
 var _lookupExc = function (funcName) {
@@ -618,51 +690,51 @@ var _lookupExc = function (funcName) {
 }
 
 // Add a child Elemental.
-Elemental.prototype.add_child = function (child) {
+Elemental.prototype.addChild = function (child) {
     if(!(child instanceof Elemental)) {
-        _lookupExc(".add_child");
+        _lookupExc(".addChild");
     }
     else if (typeof child === "string" && this._collection.objects) {
         child = this._collection.objects[child];
     }
-    child._add_parent(this);
-    this._add_child(child);
+    child._addParent(this);
+    this._addChild(child);
 };
 
 // Delete a child Elemental.
-Elemental.prototype.del_child = function (child) {
+Elemental.prototype.delChild = function (child) {
     if (!(child instanceof Elemental)) {
-        _lookupExc(".del_child");
+        _lookupExc(".delChild");
     }
     else if (typeof child === "string" && this._collection.objects) {
         child = this._collection.objects[child];
     }
-    child._del_parent(this);
-    this._del_child(child);
+    child._delParent(this);
+    this._delChild(child);
 };
 
 // Add a parent Elemental.
-Elemental.prototype.add_parent = function (parent) {
+Elemental.prototype.addParent = function (parent) {
     if(!(parent instanceof Elemental)) {
-        _lookupExc(".add_parent");
+        _lookupExc(".addParent");
     }
     else if (typeof parent === "string" && this._collection.objects) {
         parent = this._collection.objects[parent];
     }
-    parent._add_child(this);
-    this._add_parent(parent);
+    parent._addChild(this);
+    this._addParent(parent);
 };
 
 // Delete a parent Elemental.
-Elemental.prototype.del_parent = function (parent) {
+Elemental.prototype.delParent = function (parent) {
     if(!(parent instanceof Elemental)) {
-        _lookupExc(".del_parent");
+        _lookupExc(".delParent");
     }
     else if (typeof parent === "string" && this._collection.objects) {
         parent = this._collection.objects[parent];
     }
-    parent._del_child(this);
-    this._del_parent(parent);
+    parent._delChild(this);
+    this._delParent(parent);
 };
 
 // Destroy this Elemental.
@@ -670,14 +742,14 @@ Elemental.prototype.destroy = function () {
     // Instruct children of the destruction of this Elemental.
     for (var i=0; i<this._children.length; i++) {
         var child = this._children[i];
-        child._del_parent(this);
+        child._delParent(this);
     }
     // Instruct parents of the destruction of this Elemental.
     for (var i=0; i<this._parents.length; i++) {
         var parent = this._parents[i];
-        parent._del_child(this);
+        parent._delChild(this);
     }
-    this.init(); // Simply init the object.
+    this._init(); // Simply _init the object.
 }
 
 // Validate the object.
@@ -696,7 +768,7 @@ Elemental.prototype.hasOwnProperty = function (propName) { // tested! (1/2 cover
 
 // Evaluate condition.
 Elemental.prototype.evaluate = function (condition) { // tested! (decent coverage)
-    var statement = this._parse_condition(this._parse_def(condition, true));
+    var statement = this._parseCondition(this._parseDef(condition, true));
     return eval(statement);
 };
 
@@ -707,47 +779,20 @@ Elemental.prototype.toString = function () { // tested! (decent coverage)
 };
 
 // Pack and return the schema of this DataPoint.
-// Schema is the definition of this elemental. Unmodified.
 Elemental.prototype.toSchema = function (additional) { // tested! (some coverage)
-    additional = additional || [];
-    return this._getProps(['_id', '_type', '_label', '_show', '_required'].concat(additional));
+    return this._percolateMap(this._toSchema, additional || []);
 };
 
-// Adhere to is_shown criteria. Returns schema and value.
-Elemental.prototype.toRender = function (additional) { // tested! (some coverage)
-    if (this.show === true) {
-        return [this._getProps(['id', 'type', 'label', 'required', 'value'].concat(additional || []))];
-    } 
-    else {
-        return [];
-    }
-};
-
-// Initiate a render and distill upward through the chain.
-Elemental.prototype.distill = function (additional) {
-    if (this.show === true) {
-        var thisobj = this._getProps(['id', 'type', 'label', 'required', 'value'].concat(additional || []));
-
-    }
-    else {
-        return [];
-    }
-};
-
-// Initiate a render and percolate downward through the chain.
-Elemental.prototype.percolate = function (additional) {
-    if (this.show === true) {
-
-    }
-    else {
-        return [];
-    }
-};
+// Map the Elemental.toRender through all children.
+Elemental.prototype.toRender = function (additional) {
+    return this._percolateMap(this._toRender, additional || []);
+}
 
 Elemental.prototype.fromSchema = function (schema, collection) {
     throw new NotImplementedError("Temporarily not implemented.");
 };
 
+// Needs to be refactored as either a priveleged _onupdate or "private".
 Elemental.prototype.onupdate = function () {
     // pass
 };
@@ -755,7 +800,7 @@ Elemental.prototype.onupdate = function () {
 // Data Point Base object.
 // The bulk of the "Point" implementation is here.
 var Point = function (opts) {
-    this.init(opts);
+    this._init(opts);
 };
 
 Point.prototype = new Elemental();
@@ -766,8 +811,8 @@ Point.prototype.constructor = Point;
 // (One drawback of JS inheritence is the Parent 'constructor' is only
 //  fired when creating the child class, not when instantiating. In
 //  essence, this is the true constructor.)
-Point.prototype.init = function (opts) { // needs tests??
-    Elemental.prototype.init.call(this);
+Point.prototype._init = function (opts) { // needs tests??
+    Elemental.prototype._init.call(this);
     _.extend(this, {
         _type: 'point'
     }, opts);
@@ -777,28 +822,45 @@ Point.prototype.init = function (opts) { // needs tests??
 // Public Properties...
 // --------------------
 //
+// 
+Point.prototype._showGetter = function () {
+    return this._distillProp('_show');
+    // ?? return Elemental.prototype._getValue.call(this, value);
+};
 Object.defineProperty(Point.prototype, 'show', { // tested! (decent coverage)
     enumerable: true,
     configurable: true,
     writeable: false,
-    get: function () {
-        var value = this._distillProperty('_show');
-        return Elemental.prototype._prepValue.call(this, value);
-    },
+    get: Point.prototype._showGetter,
     set: Elemental.prototype._showSetter
 });
 
 //
+Point.prototype._requiredGetter = function () {
+    return this._distillProp('_required');
+    //?? return Elemental.prototype._getValue.call(this, value);
+}
 Object.defineProperty(Point.prototype, 'required', { // tested! (decent coverage)
     enumerable: true,
     configurable: true,
     writeable: false,
-    get: function () {
-        var value = this._distillProperty('_required');
-        return Elemental.prototype._prepValue.call(this, value);
-    },
+    get: Point.prototype._requiredGetter,
     set: Elemental.prototype._requiredSetter
 });
+
+//
+Point.prototype._lockableGetter = function () {
+    return this._distillProp('_lockable');
+    //?? return Elemental.prototype._getValue.call(this, value);
+}
+Object.defineProperty(Point.prototype, 'required', { // tested! (decent coverage)
+    enumerable: true,
+    configurable: true,
+    writeable: false,
+    get: Point.prototype._requiredGetter,
+    set: Elemental.prototype._requiredSetter
+});
+
 
 // Synonym to Elemental.parents.
 Object.defineProperty(Point.prototype, 'groups', { // tested
@@ -809,61 +871,48 @@ Object.defineProperty(Point.prototype, 'groups', { // tested
     set: Elemental.prototype._parentsSetter
 });
 
+Point.prototype._toSchema = function (additional) {
+    return Elemental.prototype._toSchema.call(this,
+                                ['groups'].concat(additional || []));
+};
+
+Point.prototype._toRender = function (additional) {
+    return Elemental.prototype._toRender.call(this, additional || []);
+};
+
+
 // Public Methods...
 // =================
 //
-Point.prototype.toString = function () { // tested! (decent coverage)
-    var id = this.id || ''
-    return "Point(" + id + ")";
-};
-
-// Pack and return the schema of this DataPoint.
-Point.prototype.toSchema = function (additional) { // tested! (some coverage)
-    additional = additional || [];
-    return Elemental.prototype.toSchema.call(this, ['groups'].concat(additional));
-};
-
-// Pack and return the schema as a Opts object.
-// What in the even fuck is this? and is it even needed???
-// (I hate this function)
-Point.prototype.toDef = function (schema, additional) { // tested! (little coverage)
-    var outObj = {};
-    schema = schema || this.toSchema(['value'].concat(additional));
-
-    // Pack groups.
-    schema['groups'] = [];
-    for (var i in this.groups) {
-        var group = this.groups[i];
-        schema.groups.push(group.id);
-    }
-
-    delete schema.id;
-    outObj[this.id] = schema;
-    return outObj;
-};
-
 // Add this 'point' to a group.
 // @group   Group   Group object add the point to.
-Point.prototype.add_group = function (group, collection) { // Implement collection search later.
+Point.prototype.addGroup = function (group, collection) { // Implement collection search later.
     if (group instanceof Group) {
-        this.add_parent(group);
+        this.addParent(group);
     }
     else {
-        throw new ValueError("Point.add_group: expected a Group object.");
+        throw new ValueError("Point.addGroup: expected a Group object.");
     }
 };
 
 // Delete this 'point' from group.
-Point.prototype.del_group = function (group, collection) { // Implement collection search later.
+Point.prototype.delGroup = function (group, collection) { // Implement collection search later.
     if (group instanceof Group) {
-        this.del_parent(group);
+        this.delParent(group);
     }
     else {
-        throw new ValueError("Point.del_group: expected a Group object.")
+        throw new ValueError("Point.delGroup: expected a Group object.")
     }
 };
 
+Point.prototype.toString = function () { // tested! (decent coverage)
+    var id = this.id || '';
+    return "Point(" + id + ")";
+};
+
+
 // Onupdate event. Trigger Collection onupdate as well as the Group(s)
+// Refactor / move this
 Point.prototype.onupdate = function () {
     // Run "onupdate" on the collection if present.
     if (this._collection.onupdate) {
@@ -876,130 +925,166 @@ Point.prototype.onupdate = function () {
     }
 };
 
+var Numeric = function (opts) {
+    Point.prototype._init.call(this);
+    _.extend(this, {
+        _type: 'numeric',
+        _min: 0,
+        _max: -1,
+    }, opts);
+}
+
+Numeric.prototype = new Point();
+Numeric.prototype.constructor = Numeric;
+
+Numeric.prototype._minGetter = function () {
+    return this._min;
+};
+Numeric.prototype._minSetter = function (value) {
+    if (value < 0) {
+        this._min = 0;
+    }
+    else {
+        this._min = value;
+    }
+};
+Object.defineProperty(Numeric.prototype, 'min', {
+    enumerable: true,
+    configurable: true,
+    writeable: false,
+    get: Numeric.prototype._minGetter,
+    set: Numeric.prototype._minSetter
+});
+
+Numeric.prototype._maxGetter = function () {
+    return this._max;
+};
+Numeric.prototype._maxSetter = function (value) {
+    if (value < -1) {
+        this._max = -1;
+    }
+    else {
+        this._max = value;
+    }
+};
+Object.defineProperty(Numeric.prototype, 'max', {
+    enumerable: true,
+    configurable: true,
+    writeable: false,
+    get: Numeric.prototype._maxGetter,
+    set: Numeric.prototype._maxSetter
+});
+
+// Pack and return the schema of this Integer DataPoint.
+Numeric.prototype._toSchema = function (additional) { // tested! (decent coverage)
+    return Point.prototype._toSchema.call(this,
+                                    ['_min', '_max'].concat(additional || []));
+};
+
+// Pack and return the schema of this Integer DataPoint.
+Numeric.prototype._toRender = function (additional) { // tested! (decent coverage)
+    return Point.prototype._toRender.call(this,
+                                    ['min', 'max'].concat(additional || []));
+};
+
+Numeric.prototype.validate = function () { // tested! (decent coverage)
+    if (typeof this._value === "number" &&
+            this._value >= this._min &&
+                (this._max < 0 || this._value <= this._max)) {
+        return true;
+    }
+    else {
+        throw new Invalid("Numeric value (" + this._value + ") did not validate.");
+    }
+};
+
+
 // Int Point Type.
 var Int = function (opts) {
-    Point.prototype.init.call(this);
+    Point.prototype._init.call(this);
     _.extend(this, {
         _type: 'int',
         value: 0,
-        min: 0,
-        max: -1,
     }, opts);
 };
 
-Int.prototype = new Point();
+Int.prototype = new Numeric();
 Int.prototype.constructor = Int;
 
-Int.prototype._parseValue = function (value) { // tested! (decent coverage)
+Int.prototype._setValue = function (value) { // tested! (decent coverage)
     return parseInt(value);
-};
-
-// Pack and return the schema of this Integer DataPoint.
-Int.prototype.toSchema = function (additional) { // tested! (decent coverage)
-    additional = additional || [];
-    return Point.prototype.toSchema.call(this, ['min', 'max'].concat(additional));
-};
-
-Int.prototype.validate = function () { // tested! (decent coverage)
-    if (typeof this._value === "number" &&
-            this._value >= this.min &&
-                (this.max < 0 || this._value <= this.max)) {
-        return true;
-    }
-    else {
-        throw new Invalid("Int value (" + this._value + ") did not validate.");
-    }
-};
-
-// Str Point Type.
-var Str = function (opts) {
-    Point.prototype.init.call(this);
-    _.extend(this, {
-        _type: 'str',
-        value: '',
-        min: 0,
-        max: -1
-    }, opts);
-};
-
-Str.prototype = new Point();
-Str.prototype.constructor = Str;
-
-Str.prototype._parseValue = function(value) {
-    return String(value);
-};
-
-// Pack and return the schema of this Integer DataPoint.
-Str.prototype.toSchema = function (additional) {
-    additional = additional || [];
-    return Point.prototype.toSchema.call(this, ['min', 'max'].concat(additional));
-};
-
-Str.prototype.validate = function () {
-    if (typeof this._value === "string" &&
-            this._value.length >= this.min &&
-                (this.max < 0 || this._value.length <= this.max)) {
-        return true;
-    }
-    else {
-        throw new Invalid("Str value (" + this._value + ") did not validate. id:" + this.id);
-    }
 };
 
 // Float Point Type.
 var Float = function (opts) {
-    Point.prototype.init.call(this);
+    Point.prototype._init.call(this);
     _.extend(this, {
         _type: 'float',
-        value: 0.0,
-        min: 0,
-        max: -1,
-        precision: 6,
+        _value: 0.0,
+        _precision: 6,
     }, opts);
 };
 
-Float.prototype = new Point();
+Float.prototype = new Numeric();
 Float.prototype.constructor = Float;
 
-Float.prototype._parseValue = function (value) {
+Float.prototype._precisionGetter = function () {
+    return this._precision;
+};
+Float.prototype._precisionSetter = function (value) {
+    if (value > 0) {
+        this._precision = 0;
+    }
+    else {
+        this._precision = value;
+    }
+};
+Object.defineProperty(Float.prototype, 'precision', {
+    enumerable: true,
+    configurable: true,
+    writeable: false,
+    get: Float.prototype._precisionGetter,
+    set: Float.prototype._precisionSetter
+});
+
+// Pack and return the schema of this Integer DataPoint.
+Float.prototype._toSchema = function (additional) { // tested! (decent coverage)
+    return Numeric.prototype._toSchema.call(this,
+                                    ['_precision'].concat(additional || []));
+};
+
+// Pack and return the schema of this Integer DataPoint.
+Float.prototype._toRender = function (additional) { // tested! (decent coverage)
+    return Numeric.prototype._toRender.call(this,
+                                    [].concat(additional || []));
+};
+
+//
+Float.prototype._setValue = function (value) {
     return parseFloat(value);
 };
 
-Float.prototype._prepValue = function (value) {
+//
+Float.prototype._getValue = function (value) {
     return value.toPrecision(this.precision);
 };
 
-// Pack and return the schema of this Float DataPoint.
-Float.prototype.toSchema = function (additional) {
-    additional = additional || [];
-    return Point.prototype.toSchema.call(this, ['min', 'max',
-                                        'precision'].concat(additional));
-};
 
-Float.prototype.validate = function () {
-    if (typeof this._value === "number" &&
-            this._value >= this.min &&
-                (this.max < 0 || this._value <= this.max)) {
-        return true;
-    }
-    else {
-        throw new Invalid("Float value (" + this._value + ") did not validate.");
-    }
-};
+
 
 // Bool Point Type;
 var Bool = function (opts) {
-    Point.prototype.init.call(this);
+    Point.prototype._init.call(this);
     _.extend(this, {
         _type: 'bool',
-        value: false
+        _value: false
     }, opts);
 };
 
 Bool.prototype = new Point();
 Bool.prototype.constructor = Bool;
 
-Bool.prototype._parseValue = function (value) {
+Bool.prototype._setValue = function (value) {
     return Boolean(value);
 };
 
@@ -1018,11 +1103,65 @@ Bool.prototype.validate = function () {
 
 // List Point Type;
 var List = function (opts) {
-    Point.prototype.init.call(this);
+    Point.prototype._init.call(this);
     _.extend(this, {
         _type: 'list',
         value: []
     }, opts);
+};
+
+// Str Point Type.
+var Str = function (opts) {
+    Point.prototype._init.call(this);
+    _.extend(this, {
+        _type: 'str',
+        _value: '',
+        _min: 0,
+        _max: -1
+    }, opts);
+};
+
+Str.prototype = new Point();
+Str.prototype.constructor = Str;
+
+Object.defineProperty(Str.prototype, 'min', {
+    enumerable: true,
+    configurable: true,
+    writeable: false,
+    // Use Numerics min getter/setter. Identical code.
+    get: Numeric.prototype._minGetter,
+    set: Numeric.prototype._minSetter
+});
+
+
+Object.defineProperty(Str.prototype, 'max', {
+    enumerable: true,
+    configurable: true,
+    writeable: false,
+    // Use Numerics max getter/setter. Identical code.
+    get: Numeric.prototype._maxGetter,
+    set: Numeric.prototype._maxSetter
+});
+
+Str.prototype._setValue = function(value) {
+    return String(value);
+};
+
+// Pack and return the schema of this Integer DataPoint.
+Str.prototype.toSchema = function (additional) {
+    return this._percolateMap(Point.prototype.toSchema,
+                ['_min', '_max'].concat(additional || []));
+};
+
+Str.prototype.validate = function () {
+    if (typeof this._value === "string" &&
+            this._value.length >= this.min &&
+                (this.max < 0 || this._value.length <= this.max)) {
+        return true;
+    }
+    else {
+        throw new Invalid("Str value (" + this._value + ") did not validate. id:" + this.id);
+    }
 };
 
 List.prototype = new Point();
@@ -1040,18 +1179,15 @@ List.prototype.validate = function () {
 
 //
 var Group = function (opts) {
-    _.extend(this, {
-
-    });
-    this.init(opts);
+    this._init(opts);
 };
 
 Group.prototype = new Elemental();
 Group.prototype.constructor = Group;
 
 //
-Group.prototype.init = function (opts) {
-    Elemental.prototype.init.call(this);
+Group.prototype._init = function (opts) {
+    Elemental.prototype._init.call(this);
     _.extend(this, {
         _type: 'group',
         radio: false, // all members must be bool. ?? why?
@@ -1128,8 +1264,8 @@ Group.prototype.validate = function () { // tested (light coverage)
 //
 Group.prototype.add_point = function (point, collection) { // tested (decent coverage)
     if (point instanceof Point) {
-        this._add_child(point);
-        point._add_parent(this);
+        this._addChild(point);
+        point._addParent(this);
     } 
     else {
         throw new ArgumentError('Group.add_point expected a `Point` object.');
@@ -1138,8 +1274,8 @@ Group.prototype.add_point = function (point, collection) { // tested (decent cov
 //
 Group.prototype.del_point = function (point) { // tested (decent coverage)
     if (point instanceof Point) {
-        this._del_child(point);
-        point._del_parent(this, true);
+        this._delChild(point);
+        point._delParent(this, true);
     }
     else {
         throw new ArgumentError('Group.del_point expected a `Point` object.');
@@ -1318,14 +1454,14 @@ var PointCollection = function (opts) {
         }
     });
 
-    this.init(opts)
+    this._init(opts)
 };
 
 PointCollection.prototype = new Elemental();
 PointCollection.prototype.constructor = PointCollection;
 
-PointCollection.prototype.init = function (opts) {
-    Elemental.prototype.init.call(this);
+PointCollection.prototype._init = function (opts) {
+    Elemental.prototype._init.call(this);
     _.extend(this, {
         _type: 'collection',
         name: '', // ????
