@@ -27,6 +27,10 @@ define(['underscore', 'backbone', 'qunit', 'views', 'tests/test_elements', 'temp
                             var preview = new Views.PointCollectionView(c1());
                             preview.render();
                         },
+                        'play': function () {
+                            var play = new Views.PlayView();
+                            play.render();
+                        },
                         'edit': function() {
                             $('.page').html('<hr /><div id="collection_admin"></div><hr /><div id="collection"></div>');
                             var admin = new Views.PointCollectionAdminView(c1());

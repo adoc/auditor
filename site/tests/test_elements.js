@@ -1,3 +1,4 @@
+"use strict";
 define(['qunit', 'elements'],
     function () { return {
         run: function () {
@@ -70,11 +71,11 @@ define(['qunit', 'elements'],
                 }
 
                 var e = new Elemental({lockable: true, locked: true});
-                consistentFunction = Elemental._decConsistent(_consistentFunction, 'Nope, its locked');
+                var consistentFunction = Elemental._decConsistent(_consistentFunction, 'Nope, its locked');
                 throws(function () { consistentFunction.call(e); } , Inconsistent);
 
                 var e = new Elemental();
-                consistentFunction = Elemental._decConsistent(_consistentFunction, 'Nope, its locked');
+                var consistentFunction = Elemental._decConsistent(_consistentFunction, 'Nope, its locked');
                 consistentFunction.call(e);
                 deepEqual(e.dummy, 'Uh oh we did something');
             });
@@ -83,12 +84,12 @@ define(['qunit', 'elements'],
             // -----------------
             test("...priv method: `Elemental._addChild`...", function () {
                 var g1 = new Elemental(),
-                    p1 = new Elemental();
+                    p1 = new Elemental(),
                     p2 = new Elemental({id: 'id1'});
                 g1._addChild(p1);
                 deepEqual(g1.children[0], p1);
                 
-                g1.addChild(p2);
+                g1._addChild(p2);
                 deepEqual(g1.children[1], p2);
 
                 throws(function () { g1._addChild(p1); }, ValueError);
@@ -361,10 +362,87 @@ define(['qunit', 'elements'],
                     }
                 });
             });
+            test("...pub method: `Elemental._init`...", function () {
+                var e = new Elemental(),
+                    same_e = e._init();
+                deepEqual(e, same_e);
+                var e = new Elemental(),
+                    // reinitialize with new values.
+                    same_e = e._init({id: 'myid', show: true});
+                deepEqual(e, same_e);
+                deepEqual(same_e.id, 'myid');
+                deepEqual(e.show, true);
+            });
+            //  "Private" Proto Methods:
+            //  ------------------------
+            test("...pub method: `Elemental._getValue`...", function () {
+                var e = new Elemental();
+                deepEqual(e._getValue('value'), 'value');
+                deepEqual(e._getValue(0), 0);
+                deepEqual(e._getValue(123), 123);
+                deepEqual(e._getValue(123.123), 123.123);
+                deepEqual(e._getValue(true), true);
+                deepEqual(e._getValue(false), false);
+                deepEqual(e._getValue(null), null);
+                deepEqual(e._getValue(undefined), null);
+            });
+            test("...pub method: `Elemental._setValue`...", function () {
+                var e = new Elemental();
+                deepEqual(e._setValue('value'), 'value');
+                deepEqual(e._setValue(0), 0);
+                deepEqual(e._setValue(123), 123);
+                deepEqual(e._setValue(123.123), 123.123);
+                deepEqual(e._setValue(true), true);
+                deepEqual(e._setValue(false), false);
+            });
+            test("...pub method: `Elemental._toSchema`...", function () {
+                // base
+                var e = new Elemental();
+                deepEqual(e._toSchema(), {_type: 'elemental', _id: e.id});
+                // add `id`
+                var e = new Elemental({id: 'id1'});
+                deepEqual(e._toSchema(), {_type: 'elemental', _id: 'id1'});
+                // add `label`
+                var e = new Elemental({id: 'id1', label: 'label1'});
+                deepEqual(e._toSchema(), {_type: 'elemental', _id: 'id1', _label: 'label1'});
+                // add `show`
+                var e = new Elemental({id: 'id1', label: 'label1', show: true});
+                deepEqual(e._toSchema(), {_type: 'elemental', _id: 'id1', _label: 'label1',
+                                            _show: true});
+                // add `required`
+                var e = new Elemental({id: 'id1', label: 'label1', show: true,
+                                        required: true});
+                deepEqual(e._toSchema(), {_type: 'elemental', _id: 'id1', _label: 'label1',
+                                            _show: true, _required: true});
+                // Try extra properties.
+                var e = new Elemental({id: 'id1', label: 'label1', show: true,
+                                        required: true, value: 'nope'});
+                deepEqual(e._toSchema(), {_type: 'elemental', _id: 'id1', _label: 'label1',
+                                            _show: true, _required: true});
+            });
+            test("...pub method: `Elemental._toRender`...", function () {
+                // Base Elemental
+                var p = new Elemental();
+                deepEqual(p._toRender(),{});
+                // Un-shown Elemental
+                var p = new Elemental({id: 'id', value: 'value'});
+                deepEqual(p._toRender(), {});
+                // Shown Elemental
+                var p = new Elemental({id: 'id1', show: true});
+                deepEqual(p._toRender(), {'id1': {type: "elemental"}});
+                // add `label`
+                var p = new Elemental({id: 'id1', label: 'label1', show: true});
+                deepEqual(p._toRender(), {'id1': {label: 'label1', type: "elemental"}});
+                // add `required`
+                var p = new Elemental({id: 'id1', label: 'label1', required: true, show: true});
+                deepEqual(p._toRender(), {'id1': {type: "elemental", label: 'label1', required: true}});
+                // add `value`
+                var p = new Elemental({id: 'id1', label: 'label1', required: true, value: 'value', show: true});
+                deepEqual(p._toRender(), {'id1': {label: 'label1', required: true, value: 'value', type: "elemental"}});
+            });
 
             // Properties
             // ----------
-
             test("...prop: `Elemental.id`...", function () {
                 var e= new Elemental();
                 deepEqual(e.id, e._id);
@@ -384,24 +462,13 @@ define(['qunit', 'elements'],
                 throws(function() {e.id = 'ord';}, ValueError);
             });
 
-            test("...prop: `Elemental.value`...", function () {
+            test("...prop: `Elemental.type`...", function () {
                 var e = new Elemental();
-                notDeepEqual(e.value, e._value);
-                deepEqual(e.value, null);
-                deepEqual(e._value, undefined);
-                var e = new Elemental({value: 1234});
-                deepEqual(e.value, e._value);
-                deepEqual(e.value, 1234);
-                deepEqual(e._value, 1234);
-                var e = new Elemental({value: '1234'});
-                deepEqual(e.value, e._value);
-                deepEqual(e.value, '1234');
-                deepEqual(e._value, '1234');
-                var e = new Elemental();
-                e.value = '1234';
-                deepEqual(e.value, e._value);
-                deepEqual(e.value, '1234');
-                deepEqual(e._value, '1234');
+                deepEqual(e.type, e._type);
+                deepEqual(e.type, 'elemental');
+
+                throws(function() { e.type = 'hi'; }, ValueError);
+                deepEqual(e.type, 'elemental');
             });
             test("...prop: `Elemental.label`...", function () {
                 var e = new Elemental();
@@ -421,6 +488,25 @@ define(['qunit', 'elements'],
                 notDeepEqual(e.label, e._label);
                 deepEqual(e.label, '1234 in label.');
                 deepEqual(e._label, '{value} in label.');
+            });
+            test("...prop: `Elemental.value`...", function () {
+                var e = new Elemental();
+                notDeepEqual(e.value, e._value);
+                deepEqual(e.value, null);
+                deepEqual(e._value, undefined);
+                var e = new Elemental({value: 1234});
+                deepEqual(e.value, e._value);
+                deepEqual(e.value, 1234);
+                deepEqual(e._value, 1234);
+                var e = new Elemental({value: '1234'});
+                deepEqual(e.value, e._value);
+                deepEqual(e.value, '1234');
+                deepEqual(e._value, '1234');
+                var e = new Elemental();
+                e.value = '1234';
+                deepEqual(e.value, e._value);
+                deepEqual(e.value, '1234');
+                deepEqual(e._value, '1234');
             });
             test("...prop: `Elemental.show`..." , function () {
                 var e = new Elemental();
@@ -448,20 +534,86 @@ define(['qunit', 'elements'],
                 deepEqual(e.collection, undefined);
                 deepEqual(e._collection, c);
             });
-            test("...pub method: `Elemental.hasOwnProperty`...", function () {
-                var e = new Elemental();
-                deepEqual(e.hasOwnProperty('value'), true);
-                deepEqual(e.hasOwnProperty('show'), true);
-                deepEqual(e.hasOwnProperty('foo'), false);
+
+
+            //      Public Methods
+            //      --------------
+            test("...pub method: `Elemental.addChild`...", function () {
+                var e1 = new Elemental(),
+                    e2 = new Elemental(),
+                    g1 = new Elemental();
+
+                g1.addChild(e1);
+                deepEqual(g1.children.length, 1);
+                deepEqual(g1.children[0], e1);
+                deepEqual(e1.parents.length, 1);
+                deepEqual(e1.parents[0], g1);
+
+                g1.addChild(e2);
+                deepEqual(g1.children.length, 2);
+                deepEqual(g1.children[1], e2);
+                deepEqual(e2.parents.length, 1);
+                deepEqual(e2.parents[0], g1);
+
+                var e1 = new Elemental(),
+                    e2 = new Elemental(),
+                    g1 = new Elemental(),
+                    g2 = new Elemental();
+
+                g1.addChild(e1);
+                deepEqual(e1.parents.length, 1);
+                deepEqual(e1.parents[0], g1);
+
+                g2.addChild(e1);
+                deepEqual(e1.parents.length, 2);
+                deepEqual(e1.parents[1], g2);
+
+                g1.addChild(e2);
+                deepEqual(e2.parents.length, 1);
+                deepEqual(e2.parents[0], g1);
+
+                g2.addChild(e2);
+                deepEqual(e2.parents.length, 2);
+                deepEqual(e2.parents[1], g2);
+
+                throws(function() { g1.addChild('nada'); }, ArgumentError);
             });
-            test("...pub method: `Elemental._setValue`...", function () {
-                var e = new Elemental();
-                deepEqual(e._setValue('value'), 'value');
-                deepEqual(e._setValue(123), 123);
-                deepEqual(e._setValue(123.123), 123.123);
-                deepEqual(e._setValue(true), true);
-                deepEqual(e._setValue(false), false);
+
+            test("...pub method: `Elemental.delChild`...", function () {
+                var e1 = new Elemental(),
+                    e2 = new Elemental(),
+                    g1 = new Elemental({children: [e1, e2]}),
+                    g2 = new Elemental({children: [e1, e2]});
+
+                deepEqual(g1.children.length, 2);
+
+                g1.delChild(e2);
+                deepEqual(g1.children.length, 1);
+                deepEqual(g1.children[0], e1);
+                deepEqual(e2.parents.length, 1);
+
+                g2.delChild(e2);
+                deepEqual(g2.children.length, 1);
+                deepEqual(g2.children[0], e1);
+                deepEqual(e2.parents.length, 0);
+
+                g1.delChild(e1);
+                deepEqual(g1.children.length, 0);
+                deepEqual(e1.parents.length, 1);
+
+                g2.delChild(e1);
+                deepEqual(g2.children.length, 0);
+                deepEqual(e1.parents.length, 0);
             });
+
+            test("...pub method: `Elemental.addParent`...", function () {
+
+            });
+
+            test("...pub method: `Elemental.delParent`...", function () {
+                
+            });
+
             test("...pub method: `Elemental.validate`...", function () {
                 var e = new Elemental();
                 throws(e.validate, NotImplementedError);
@@ -482,50 +634,15 @@ define(['qunit', 'elements'],
                 var e = new Elemental({id: 'Mine'});
                 deepEqual(e.toString(), 'Elemental(Mine)');
             });
-            test("...pub method: `Elemental._toSchema`...", function () {
-                // base
+
+
+
+
+            test("...pub method: `Elemental.hasOwnProperty`...", function () {
                 var e = new Elemental();
-                deepEqual(e._toSchema(), {_type: 'elemental', _id: e.id});
-                // add `id`
-                var e = new Elemental({id: 'id1'});
-                deepEqual(e._toSchema(), {_type: 'elemental', _id: 'id1'});
-                // add `label`
-                var e = new Elemental({type: 'elemental', id: 'id1', label: 'label1'});
-                deepEqual(e._toSchema(), {_type: 'elemental', _id: 'id1', _label: 'label1'});
-                // add `show`
-                var e = new Elemental({type: 'elemental', id: 'id1', label: 'label1', show: true});
-                deepEqual(e._toSchema(), {_type: 'elemental', _id: 'id1', _label: 'label1',
-                                            _show: true});
-                // add `required`
-                var e = new Elemental({type: 'elemental', id: 'id1', label: 'label1', show: true,
-                                        required: true});
-                deepEqual(e._toSchema(), {_type: 'elemental', _id: 'id1', _label: 'label1',
-                                            _show: true, _required: true});
-                // Try extra properties.
-                var e = new Elemental({type: 'elemental', id: 'id1', label: 'label1', show: true,
-                                        required: true, value: 'nope'});
-                deepEqual(e._toSchema(), {_type: 'elemental', _id: 'id1', _label: 'label1',
-                                            _show: true, _required: true});
-            });
-            test("...pub method: `Elemental._toRender`...", function () {
-                // Base Elemental
-                var p = new Elemental();
-                deepEqual(p._toRender(),{});
-                // Unshown Elemental
-                var p = new Elemental({id: 'id', value: 'value'});
-                deepEqual(p._toRender(), {});
-                // Shown Elemental
-                var p = new Elemental({id: 'id1', show: true});
-                deepEqual(p._toRender(), {'id1': {type: "elemental"}});
-                // add `label`
-                var p = new Elemental({id: 'id1', label: 'label1', show: true});
-                deepEqual(p._toRender(), {'id1': {label: 'label1', type: "elemental"}});
-                // add `required`
-                var p = new Elemental({id: 'id1', label: 'label1', required: true, show: true});
-                deepEqual(p._toRender(), {'id1': {type: "elemental", label: 'label1', required: true}});
-                // add `value`
-                var p = new Elemental({id: 'id1', label: 'label1', required: true, value: 'value', show: true});
-                deepEqual(p._toRender(), {'id1': {label: 'label1', required: true, value: 'value', type: "elemental"}});
+                deepEqual(e.hasOwnProperty('value'), true);
+                deepEqual(e.hasOwnProperty('show'), true);
+                deepEqual(e.hasOwnProperty('foo'), false);
             });
             test("...pub method: `Elemental.fromSchema`...", function () {
                 var p = new Elemental();
@@ -669,26 +786,26 @@ define(['qunit', 'elements'],
                 var p = new Point({id: 'id1'});
                 deepEqual(p.toSchema(), {_type: 'point', _id: 'id1'});
                 // add `label`
-                var p = new Point({type: 'point', id: 'id1', label: 'label1'});
+                var p = new Point({id: 'id1', label: 'label1'});
                 deepEqual(p.toSchema(), {_type: 'point', _id: 'id1', _label: 'label1'});
                 // add `show`
-                var p = new Point({type: 'point', id: 'id1', label: 'label1', show: true});
+                var p = new Point({id: 'id1', label: 'label1', show: true});
                 deepEqual(p.toSchema(), {_type: 'point', _id: 'id1', _label: 'label1',
                                             _show: true});
                 // add `required`
-                var p = new Point({type: 'point', id: 'id1', label: 'label1', show: true,
+                var p = new Point({id: 'id1', label: 'label1', show: true,
                                         required: true});
                 deepEqual(p.toSchema(), {_type: 'point', _id: 'id1', _label: 'label1',
                                             _show: true, _required: true});
                 // add `groups`
                 var g = new Group(),
-                    p = new Point({type: 'point', id: 'id1', label: 'label1', show: true,
+                    p = new Point({id: 'id1', label: 'label1', show: true,
                                         required: true, groups: [g]});
                 deepEqual(p.toSchema(), {_type: 'point', _id: 'id1', _label: 'label1',
                                             _show: true, _required: true,
                                             groups: [g]});
                 // Try extra properties.
-                var p = new Point({type: 'point', id: 'id1', label: 'label1', show: true,
+                var p = new Point({id: 'id1', label: 'label1', show: true,
                                         required: true, groups: [g], value: 'nope'});
                 deepEqual(p.toSchema(), {_type: 'point', _id: 'id1', _label: 'label1',
                                             _show: true, _required: true,

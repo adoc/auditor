@@ -3,10 +3,82 @@ define([
     'underscore',
     'backbone',
     'elements',
+    'text!play.html.tmpl',
     'text!pcollection.html.tmpl',
     'text!pcollection_admin.html.tmpl'
     ],
-    function($, _, Backbone, Elements, pcollection_tmpl, pcollection_admin_tmpl) {
+    function($, _, Backbone, Elements, play_tmpl, pcollection_tmpl, pcollection_admin_tmpl) {
+        
+        var renderTemplate = function (tmpl) {
+            return _.template(tmpl, {
+                view: this
+            });
+            
+        }
+
+        var PlayView = Backbone.View.extend({
+            el: '.page',
+            events: {
+                'click button[name="new"]': 'newElemental',
+                'click .elemental': 'select',
+                'drag .elemental': 'drag',
+                'drop .elemental': 'drop',
+                'dragover .elemental': 'dragover'
+            },
+            initialize: function () {
+                this.collection = new Elemental();
+                this.selected = null;
+                this.dragged = null;
+            },
+            newElemental: function (ev) {
+                this.collection.addChild(new Elemental());
+                this.renderOnly();
+                return false;
+            },
+            select: function (ev) {
+                if (this.selected && ev.target.id === this.selected.id) {
+                    this.selected = null;
+                }
+                else {
+                    this.selected = ev.target;
+                }
+                this.renderOnly();
+                return false;
+            },
+            drag: function (ev) {
+                this.dragged = ev.target;
+                return false;
+            },
+            drop: function (ev) {
+                ev.preventDefault();
+                this.dragged = null;
+                return false;
+            },
+            dragover: function (ev) {
+                ev.preventDefault();
+
+                var target = ev.target,
+                    draggedEl = $(this.dragged.id).data('Elemental'),
+                    targetEl = $(target).data('Elemental'),
+                    draggedIdx = this.collection.children.indexOf(draggedEl),
+                    targetIdx = this.collection.children.indexOf(targetEl);
+
+                console.log(draggedEl);
+                console.log(targetEl);
+
+                return false;
+            },
+            renderOnly: function () {
+                var t = _.template(play_tmpl, {
+                v: this
+            });
+                //this.$el.html(renderTemplate.call(this, play_tmpl));
+                this.$el.html(t);
+            },
+            render: function () {
+                this.renderOnly();
+            }
+        });
 
         var PointCollectionAdminView = Backbone.View.extend({
             collapsed: true,
@@ -197,6 +269,7 @@ define([
         });
 
         return {
+            PlayView: PlayView,
             PointCollectionAdminView: PointCollectionAdminView,
             PointCollectionView: PointCollectionView};
     });

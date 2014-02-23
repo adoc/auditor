@@ -1,0 +1,41 @@
+<h3>Play</h3>
+<h4>with Elementals</h4>
+<style>
+.separator {
+    float: left;
+    width
+}
+.elemental {
+    float: left;
+    margin: .5em;
+    width: auto;
+    min-height: 20px;
+    min-width: 20px;
+    border: 1px solid green;
+}
+.elemental.selected {
+    border: 1px solid red;
+}
+.elemental.dragged {
+    border: 1px dotted orange;
+}
+</style>
+<form>
+    <button name="new" title="New Elemental" class="pull-left glyphicon glyphicon-plus"></button>
+</form>
+<div class="clearfix"></div>
+<div class="playarea" style="border: #aaa 1px solid; width: 500px; height: 500px; margin: 1em; padding: 1em;">
+<% var selected = v.selected,
+        dragged = v.dragged;
+%>
+<% function drawElemental(el) { %>
+<% var classes = selected && el.id === selected.id ? ' selected' : ''; %>
+<% var dragged = dragged && el.id === dragged.id ? ' dragged' : ''; %>
+<div draggable="true" class="elemental<%=classes%><%=dragged%>" id="<%=el.id%>">
+    <% _.each(el.children, function(elemental) { 
+        drawElemental(elemental);
+    }); %>
+</div>
+<%}%>
+<% drawElemental(v.collection); %>
+</div>

@@ -23,7 +23,7 @@ if (typeof String.prototype.startsWith != 'function') {
 function keys_to_objects(keys, objects) {
     var out = [];
     if (keys && keys.length !== undefined) {
-        for (i=0; i<keys.length; i++) {
+        for (var i=0; i<keys.length; i++) {
             out.push(objects[keys[i]]);
         }  
     }
@@ -139,34 +139,15 @@ var coerceValue = function (value) {
     }
 }
 
-// an Elemental Object. This is the serializable data component of a
-//  single "Elemental"
-
-// Nope
-var ElementalObject = function (opts) {
-    _.extend(this, {
-        type: 'elemental',
-        id: undefined,
-        label: undefined,
-        value: undefined,
-        show: undefined,
-        required: undefined,
-        lockable: undefined,
-        locked: undefined,
-        parents: [],
-        children: [],
-        collection: undefined
-    });
-}
-
 
 // Base Class for everything. Very magical.
 var Elemental = function (opts) {
     _.extend(this, {
         //
-        _addChild: function (child) { // tested (decent coverage)
+        _addChild: function (child) {
             if (this._children.indexOf(child) < 0) {
                 this._children.push(child);
+                this._distillEvent('addElemental', child);
             } 
             else {
                 throw new ValueError("Elemental._addChild: %s already " +
@@ -174,10 +155,11 @@ var Elemental = function (opts) {
             }
         },
         //
-        _delChild: function (child) { // tested (decent coverage)
+        _delChild: function (child) {
             var i = this._children.indexOf(child);
             if (i >= 0) {
                 this._children.splice(i, 1);
+                this._distillEvent('delElemental', child);
             }
             else {
                 throw new ValueError("Elemenetal._delChild: %s doesn't " +
@@ -185,9 +167,10 @@ var Elemental = function (opts) {
             }
         },
         //
-        _addParent: function (parent) { // tested (decent coverage)
+        _addParent: function (parent) {
             if (this._parents.indexOf(parent) < 0) {
                 this._parents.push(parent);
+                this._distillEvent('addElemental', parent);
             }
             else {
                 throw new ValueError("Elemental._addParent: %s already " +
@@ -195,10 +178,11 @@ var Elemental = function (opts) {
             }
         },
         //
-        _delParent: function (parent) { // tested (decent coverage)
+        _delParent: function (parent) {
             var i = this._parents.indexOf(parent);
             if (i >= 0) {
                 this._parents.splice(i, 1);
+                this._distillEvent('delElemental', parent);
             }
             else {
                 throw new ValueError("Elemenetal._delParent: %s doesn't " +
@@ -214,7 +198,7 @@ var Elemental = function (opts) {
         //  };
         //  ._parseDef(obj, 'My {thing} is {whatis}.')
         //  ==="My foo is bar.";
-        _parseDef: function (string, escape) { // *tested! (decent coverage)
+        _parseDef: function (string, escape) {
             var match,
                 reToken = new RegExp('\{([a-zA-Z0-9]+)\}', 'g'),
                 that = this;
@@ -230,7 +214,7 @@ var Elemental = function (opts) {
             });
         },
         // Parse incoming conditions, replacing tokens.
-        _parseCondition: function(def) { // *tested (decent coverage)
+        _parseCondition: function(def) {
             // handle "in"
             var in_split = def.split(' in ');
             if (in_split.length == 2) {
@@ -292,7 +276,7 @@ var Elemental = function (opts) {
             }
         },
         // Return this object properties from `propList` Array of property keys.
-        _getProps: function(propList, includeAll) { // *tested (ok coverage)
+        _getProps: function(propList, includeAll) {
             propList = propList || ['id'];
             var outobj = {};
             for (var w in propList) {
@@ -367,6 +351,13 @@ var Elemental = function (opts) {
             outObj[this.id] = _.extend(obj, func.call(this, additional || []));
             return outObj;
         },
+        _distillEvent: function (event) {
+            for (var i=0; i<this._parents.length; i++) {
+                var parent = this._parents[i];
+                parent._distillEvent.apply(parent, arguments);
+            }
+            this._triggerEvent.apply(this, arguments);
+        },
         // Collects this object and its `children` and percolates them in to an
         // object.
         _percolateMap: function (func, additional) {
@@ -397,6 +388,11 @@ var Elemental = function (opts) {
             }
 
             return _.extend(obj, func.call(this, additional || []));
+        },
+        _triggerEvent: function (event) {
+            if (this.events[event]) {
+                this.events[event].apply(this, arguments);
+            } // Do nothing if event doesn't exist??
         }
     });
     
@@ -415,6 +411,7 @@ Elemental.prototype._init = function (opts) {
         _locked: false,
         _parents: [],
         _children: [],
+        _events: {},
         _collection: {},
     }, opts);
 
@@ -469,6 +466,9 @@ Object.defineProperty(Elemental.prototype, 'id', {
     set: Elemental.prototype._idSetter
 });
 
+Elemental.prototype._typeSetter = function (value) {
+    throw new ValueError('Cannot set Elemental.type.');
+};
 Elemental.prototype._typeGetter = function () {
     return this._type;
 };
@@ -476,6 +476,7 @@ Object.defineProperty(Elemental.prototype, 'type', {
     enumerable: true,
     configurable: true,
     writeable: false,
+    set: Elemental.prototype._typeSetter,
     get: Elemental.prototype._typeGetter
 });
 
@@ -597,7 +598,7 @@ Object.defineProperty(Elemental.prototype, 'lockable', {
 
 // `locked` property.
 Elemental.prototype._lockedGetter = function () {
-    return coerveValue(this._locked);
+    return coerceValue(this._locked);
 };
 Elemental.prototype._lockedSetter = function (value) {
     if (this.lockable === true) {
@@ -618,6 +619,28 @@ Object.defineProperty(Elemental.prototype, 'locked', {
     set: Elemental.prototype._lockedSetter
 });
 
+// `events` property.
+Elemental.prototype._eventsGetter = function () {
+    return this._events;
+};
+Elemental.prototype._eventsSetter = function (events) {
+    for (var key in events) {
+        var event = events[key];
+        if (typeof event !== "function") {
+            throw new ValueError("`Elemental._eventsSetter` requires events object of event callbacks.");
+        }
+    }
+    _.extend(this._events, events);
+};
+Object.defineProperty(Elemental.prototype, 'events', {
+    enumerable: true,
+    configurable: true,
+    writeable: false,
+    get: Elemental.prototype._eventsGetter,
+    set: Elemental.prototype._eventsSetter
+});
+
+
 // `children` property implementation.
 Elemental.prototype._childrenGetter = function () {
     return this._children;
@@ -627,7 +650,7 @@ Elemental.prototype._childrenSetter = function (value) {
     this._children = [];
     for (var i=0; i<value.length; i++) {
         var child = value[i];
-        this.addChild(child);
+        this.addChild(child); // Invoking public??
     }
 };
 Object.defineProperty(Elemental.prototype, 'children', {
@@ -671,7 +694,7 @@ Elemental.prototype._setValue = function (value) { // tested! (decent coverage)
 Elemental.prototype._toSchema = function (additional) { // tested! (some coverage)
     return this._getProps(['_id', '_type', '_label', '_show',
                             '_required'].concat(additional || []));
-};
+}; 
 
 // Render if shown.
 Elemental.prototype._toRender = function (additional) {
@@ -685,7 +708,7 @@ Elemental.prototype._toRender = function (additional) {
 };
 
 var _lookupExc = function (funcName) {
-    throw new AttributeError(funcName + ": expected an Elemental object or a " + 
+    throw new ArgumentError(funcName + ": expected an Elemental object or a " + 
         "string key to `collection.objects`.");
 }
 
@@ -694,7 +717,7 @@ Elemental.prototype.addChild = function (child) {
     if(!(child instanceof Elemental)) {
         _lookupExc(".addChild");
     }
-    else if (typeof child === "string" && this._collection.objects) {
+    else if (typeof child === "string" && this._collection.objects) { // untested. might refactor.
         child = this._collection.objects[child];
     }
     child._addParent(this);
@@ -706,7 +729,7 @@ Elemental.prototype.delChild = function (child) {
     if (!(child instanceof Elemental)) {
         _lookupExc(".delChild");
     }
-    else if (typeof child === "string" && this._collection.objects) {
+    else if (typeof child === "string" && this._collection.objects) { // untested. might refactor.
         child = this._collection.objects[child];
     }
     child._delParent(this);
@@ -811,7 +834,7 @@ Point.prototype.constructor = Point;
 // (One drawback of JS inheritence is the Parent 'constructor' is only
 //  fired when creating the child class, not when instantiating. In
 //  essence, this is the true constructor.)
-Point.prototype._init = function (opts) { // needs tests??
+Point.prototype._init = function (opts) {
     Elemental.prototype._init.call(this);
     _.extend(this, {
         _type: 'point'
@@ -1101,15 +1124,6 @@ Bool.prototype.validate = function () {
     }
 };
 
-// List Point Type;
-var List = function (opts) {
-    Point.prototype._init.call(this);
-    _.extend(this, {
-        _type: 'list',
-        value: []
-    }, opts);
-};
-
 // Str Point Type.
 var Str = function (opts) {
     Point.prototype._init.call(this);
@@ -1162,6 +1176,15 @@ Str.prototype.validate = function () {
     else {
         throw new Invalid("Str value (" + this._value + ") did not validate. id:" + this.id);
     }
+};
+
+// List Point Type;
+var List = function (opts) {
+    Point.prototype._init.call(this);
+    _.extend(this, {
+        _type: 'list',
+        value: []
+    }, opts);
 };
 
 List.prototype = new Point();
@@ -1297,164 +1320,9 @@ Group.prototype.onupdate = function (member) {
     }
 };
 
-//
+
 var PointCollection = function (opts) {
-    _.extend(this, {
-        _update_objects: function(objects) {
-            var id;
-            for (id in objects) {
-                _.extend(this.objects[id], objects[id]);
-            }
-        },
-        // Group definitions to Group objects.
-        // @param   groups  Array   Group definitions.
-        _addGroupDefs: function (groups) {
-            for (var id in groups) {
-                var group = groups[id];
-                group.id = id;
-                group.collection = this;
-                this.objects[id] = new Group(group);
-            }
-        },
-        // Point definitions to Point objects.
-        // @param   points  Array   Point definitions.
-        _addPointDefs: function (points) {
-            for (var id in points) {
-                var point = points[id];
-                point.id = id;
-                point.collection = this;
-                point.groups = keys_to_objects(point.groups,
-                                                    this.objects);
-                // Build and store the point.
-                if (point.type.startsWith('bool')) {
-                    point = new Bool(point);
-                }
-                else if (point.type.startsWith('int')) {
-                    point = new Int(point);
-                }
-                else if (point.type.startsWith('str')) {
-                    point = new Str(point);
-                }
-                else if (point.type.startsWith('float')) {
-                    point = new Float(point);
-                }
-                else if (point.type.startsWith('list')) {
-                    point = new List(point);
-                }
-                else {
-                    throw "Expected `point.type` in ['bool', 'int', 'str', 'float']. Got " + point.type;
-                }
-                this.objects[id] = point;
-            }
-        },
-        _addCollectionDefs: function (collections) {
-            for (var id in collections) {
-                var collection = collections[id];
-                collection.id = id;
-                this.objects[id] = collection
-                //this.collections[id] = collection;
-            }
-        },
-        // Collection updated by group or point, check for update conditions.
-        onupdate: function(object) {
-            // Bind State processing.
-            if (object && object.bind_states) {
-                for (var condition in object.bind_states) {
-                    var condition_eval = object.evaluate(condition);
-                    var binds = object.bind_states[condition];
-                    for (var id in binds) {
-                        var obj = this.objects[id];
-                        obj[binds[id]] = condition_eval;
-                    }
-                }
-            }
-        },
-        //
-        validate: function () {
-            // Refactor this.
-            var i, obj;
-            for (i in this.objects) {
-                obj = this.objects[i];
-                if (obj.show &&
-                    (obj.required || Boolean(obj.value))) {
-                    obj.validate();
-                }
-            }
-        },
-        // PointCollection to Object.
-        toDef: function() {
-            return {};
-        },
-        // PointCollection from Object.
-        fromDef: function(object) {
-            this.label = object.label || '';
-            // Parse groups in object.
-            if (object.groups !== undefined) {
-                this._addGroupDefs(object.groups);
-            }
-            // Parse points in object.
-            if (object.points !== undefined) {
-                this._addPointDefs(object.points);
-            }
-            if (object.collections !== undefined) {
-                this._addCollectionDefs(object.collections);
-            }
-            // Update order list with actual objects (groups or points).
-            if (object.order !== undefined) {
-                for (var i=0; i<object.order.length; i++) {
-                    this.order.push(this.objects[object.order[i]]);
-                }
-            }
-            if (object.lockable !== undefined) {
-                this.lockable = object.lockable;
-            }
-
-            return this;
-        },
-        // Render the collection to an array.
-        toRender: function() {
-            var output = [];
-            for (var i in this.order) {
-                var obj = this.order[i];
-                output = output.concat(obj.toRender());
-            }
-            return output;
-        },
-        // Output PointCollection's schema.
-        toSchema: function(render) {
-            var outobj = {};
-            for (var i in this.order) {
-                var obj = this.order[i];
-                outobj[obj.id] = obj.toSchema();
-                // Get members' schema if object has.
-                if (obj.members && obj.members.length) {
-                    for(var m=0; m<obj.members.length; m++) {
-                        var mobj = obj.members[m];
-                        outobj[mobj.id] = mobj.toSchema();
-                    }
-                }
-            }
-            return outobj;
-        },
-        // Output PointCollection as a Backbone Model.
-        toModel: function(render) {
-            if (Backbone !== undefined) {
-                var Model = Backbone.Model.extend({}), //??
-                    model = new Model();
-                model.render = render = render || this.toRender();
-                for (var i in render) {
-                    model.set(render[i].id, render[i].value);
-                }
-                model.schema = this.toSchema();
-                return model;
-            }
-            else {
-                throw "PointCollection.toModel requires Backbone.";
-            }
-        }
-    });
-
-    this._init(opts)
+    this._init(opts);
 };
 
 PointCollection.prototype = new Elemental();
@@ -1464,68 +1332,12 @@ PointCollection.prototype._init = function (opts) {
     Elemental.prototype._init.call(this);
     _.extend(this, {
         _type: 'collection',
-        name: '', // ????
-        objects: {}, //?????
-        collections: {}, //???
-        order: [], // ughhhh fix!
+        events: {
+            'addElemental': function (ev, datum) {
+                console.log("add Elemental: " + datum);
+            }
+        }
+
     }, opts);
     return this;
-};
-
-
-// Definition of a Point.
-// This is used to construct views to modify Point properties.
-// (Cleverly using the existing Objects/Functions to implement the concept.)
-var PointMeta = {
-    points: {
-        id: {
-            label: 'Id',
-            type: 'str',
-            required: true,
-            show: true
-        },
-        type: {
-            label: 'Type',
-            type: 'str',
-            show: true,
-            valid: ['str', 'bool', 'int', 'float'],
-            bind_states: {
-                '{value} in ["str", "int", "float"]': {
-                    min: ['show'],
-                    max: ['show']
-                }
-            }
-        },
-        label: {
-            label: 'Label',
-            type: 'str',
-            show: true
-        },
-        required: {
-            label: 'Required',
-            type: 'bool',
-            show: true
-        },
-        show: {
-            label: 'Show',
-            type: 'bool',
-            show: true
-        },
-        min: {
-            label: 'Min',
-            type: 'int'
-        },
-        max: {
-            label: 'Max',
-            type: 'int'
-        },
-        valid: {
-            label: 'Valid',
-            type: 'list',
-        },
-        groups: {
-            label: 'Groups',
-            type: 'list'
-        }
-    }
 };
