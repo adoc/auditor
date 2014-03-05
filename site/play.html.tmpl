@@ -5,7 +5,7 @@
     float: left;
     width
 }
-.elemental {
+.elemental, .collection {
     float: left;
     margin: .5em;
     width: auto;
@@ -13,11 +13,20 @@
     min-width: 20px;
     border: 1px solid green;
 }
+.collection {
+    border: 1px solid blue;
+}
+.collection.selected {
+    border: 1px solid orange;
+}
 .elemental.selected {
     border: 1px solid red;
 }
+.elemental.over {
+    border: 2px dotted blue;
+}
 .elemental.dragged {
-    border: 1px dotted orange;
+    border: 1px dotted gray;
 }
 </style>
 <form>
@@ -25,17 +34,20 @@
 </form>
 <div class="clearfix"></div>
 <div class="playarea" style="border: #aaa 1px solid; width: 500px; height: 500px; margin: 1em; padding: 1em;">
-<% var selected = v.selected,
-        dragged = v.dragged;
-%>
-<% function drawElemental(el) { %>
-<% var classes = selected && el.id === selected.id ? ' selected' : ''; %>
-<% var dragged = dragged && el.id === dragged.id ? ' dragged' : ''; %>
-<div draggable="true" class="elemental<%=classes%><%=dragged%>" id="<%=el.id%>">
-    <% _.each(el.children, function(elemental) { 
-        drawElemental(elemental);
-    }); %>
-</div>
-<%}%>
-<% drawElemental(v.collection); %>
+<% var view = v;
+
+function drawElemental(el, idx) {
+    var type = el.type || '',
+        selected = view.selected && el.id === view.selected.id ? ' selected' : '',
+        dragged = view.dragged && el.id === view.dragged.id ? ' dragged' : '',
+        over = view.overIdx === idx ? ' over': '';
+    %>    
+    <div draggable="true" class="<%=type%><%=selected%><%=dragged%><%=over%>" id="<%=el.id%>">
+        <span style="z-index: 1000; float: left;"><%=idx%></span>
+        <% _.each(el.children, function(elemental, idx) { 
+            drawElemental(elemental, idx);
+        }); %>
+    </div>
+<% } %>
+<% drawElemental(v.parentElemental, -1); %>
 </div>

@@ -8,6 +8,7 @@ require.config({
         rng: 'lib/rng',
         persist: 'lib/persist-min',
         elements: 'elements',
+        elementalViews: 'elements_views',
         // Strip for production.
         qunit: '//code.jquery.com/qunit/qunit-1.14.0'
     },
@@ -27,6 +28,9 @@ require.config({
         },
         elements: {
             deps: ['underscore']
+        },
+        elementalViews: {
+            deps: ['underscore', 'jquery', 'elements']
         },
         // Strip for production.
         qunit: {

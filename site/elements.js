@@ -2,12 +2,29 @@
 // Enable strict for everything. Other modules should be strict anyway or don't
 // use them...
 
+// TODO:
+//  We need to wrap this whole mess in a priv func. (function () { })();
+//
+//  Enable for require.
+//
+//  Clean up the inheritance (helper functions.)
+//      There is no difference from the .prototype and what's happening with
+//      extend. Perhaps for compatibility, we remove _.extend completely and
+//      implement a simple version that works for us.
+//
+//      Check if the "functional" approach here
+//      http://davidshariff.com/blog/javascript-inheritance-patterns/
+//      will work. Some of it works for me, some of it doesn't.
+//
+//  Use aliases for commonly used large names? (space saving)
+
+
 // http://stackoverflow.com/a/105074
 function s4() {
   return Math.floor((1 + Math.random()) * 0x10000)
              .toString(16)
              .substring(1);
-};
+}
 function guid() {
   return s4() + s4() + '-' + s4() + '-' + s4() + '-' +
          s4() + '-' + s4() + s4() + s4();
@@ -137,12 +154,186 @@ var coerceValue = function (value) {
     else {
         return value;
     }
-}
+};
 
+// Ordered Set-like `Array` implementation.
+var ElementalArray = function (owner, array) {
+
+    // "constructor"
+    if (owner && owner instanceof Elemental) {
+        this._owner = owner;
+    }
+    if (array && array instanceof Array) {
+        // Add manually instead of `concat`.
+        // This allows for `add` method to handle Elemental
+        // vs just an Elemental id.
+        for (var i=0; i<array.length; i++) {
+            this.add(array[i]);
+        }
+        //this.concat(array);
+    }
+};
+
+ElementalArray.prototype = new Array;
+ElementalArray.prototype.constructor = ElementalArray;
+
+ElementalArray.prototype.toArray = function () {
+    return Array.prototype.slice.call(this);
+};
+
+// Instead of an array of Elementals, we get an array of
+//  Elemental `id`s (References).
+ElementalArray.prototype.toRef = function () {
+    var refArray = [],
+        array = this.toArray();
+
+    for (var i=0; i<array.length; i++) {
+        var item = array[i];
+        if (item.id) {
+            refArray.push(item.id);
+        }
+        else {
+            throw new ValueError("`ElementalArray.toRef`: Item was expected to have an `id` property.");
+        }
+    }
+    return refArray;
+};
+
+ElementalArray.prototype.add = function (item) {
+    if (!(item instanceof Elemental)) {
+        if (__singletonCollection.has(item)) {
+            item = __singletonCollection.get(item);
+        }
+        else {
+            throw new ValueError("ElementalArray.add: `item` argument was not an Elemental nor was it an id to an Elemental in the Collection.");
+        }
+    }
+
+    if (this.indexOf(item) < 0) {
+        this.push(item);
+        if (this._owner) {
+            this._owner._distillEvent('addElemental', item);
+        }
+        // More events?? Kludgy.
+        if (this.onUpdate) {
+            this.onUpdate(item);
+        }
+    } 
+    else {
+        throw new ValueError("Elemental._add: already " +
+            "has %s as a member.", item.toString());
+    }
+};
+
+ElementalArray.prototype.del = function (item) {
+    if (!(item instanceof Elemental)) {
+        if (__singletonCollection.has(item)) {
+            item = __singletonCollection.get(item);
+        }
+        else {
+            throw new ValueError("ElementalArray.del: `item` argument was not an Elemental nor was it an id to an Elemental in the Collection.");
+        }
+    }
+
+    var i = this.indexOf(item);
+    if (i >= 0) {
+        this.splice(i, 1);
+        if (this._owner)
+            this._owner._distillEvent('delElemental', item);
+        if (this.onUpdate)
+            this.onUpdate(item);
+    }
+    else {
+        throw new ValueError("Elemenetal._del: doesn't " +
+            "have %s as a member.", item.toString());
+    }
+};
+
+ElementalArray.prototype.move = function (item, toIdx) {
+    var i = this.indexOf(item);
+    if (i >= 0) {
+        this.splice(i, 1);
+        this.splice(toIdx, 0, item);
+        if (this._owner)
+            this._owner._distillEvent('moveElemental', item);
+        if (this.onUpdate) {
+            this.onUpdate(item);
+        }
+    }
+    else {
+        throw new ValueError("Elemental._move: %s is not a member.", item.toString());
+    }
+};
+
+
+var Collection = function (opts) {
+    this._init(opts);
+};
+
+Collection.prototype._init = function (opts) {
+    _.extend(this, {
+        _: {}
+    }, opts);
+    return this;
+};
+
+Collection.prototype.has = function (id) {
+    if (this._.hasOwnProperty(id)) {
+        return true;
+    }
+    return false;
+};
+
+Collection.prototype.get = function (id) {
+    return this._[id];
+};
+
+Collection.prototype.add = function (elemental) {
+    if (elemental && elemental instanceof Elemental) {
+        this._[elemental.id] = elemental;
+    }
+    else {
+        throw new ValueError("Collection.add: expected an Elemental.");
+    }
+};
+
+Collection.prototype.del = function (elemental) {
+    if (typeof elemental === "string") {
+        if (this._.hasOwnProperty(elemental)) {
+            delete this._[elemental];
+            return;
+        }
+    }
+    if (elemental instanceof Elemental) {
+        for (ela in this._) {
+            if (elemental === this._[ela]) {
+                delete this._[ela];
+                return;
+            }
+        }
+    }
+    throw new ValueError('Collection.del: Elemental was not found in the collection.');
+};
+
+// We're going to keep a singleton here to reference all elements.
+// This is useful when we want to work with compact reference id lists.
+//
+// TODO: This idea will have to be further thought out. Perhaps different
+//      collection contexts like I wanted before? (Singletons bug me.)
+var __singletonCollection = new Collection();
 
 // Base Class for everything. Very magical.
-var Elemental = function (opts) {
+// TODO:
+//      `id` should end up being blank or whatever the user implements and
+//          NOT used for internal reference.
+//
+//      To ensure uniqueness:
+//      `guid` should be an additionial property that is using our
+//          random generators. Most likely the back end will assign it's own
+//          guids so this is all temporary reference anyway.
+var Elemental = function (opts, noInit) {
     _.extend(this, {
+        /*
         //
         _addChild: function (child) {
             if (this._children.indexOf(child) < 0) {
@@ -164,6 +355,17 @@ var Elemental = function (opts) {
             else {
                 throw new ValueError("Elemenetal._delChild: %s doesn't " +
                     "have %s as a member.", this.toString(), child.toString());
+            }
+        },
+        _moveChild: function (child, toIdx) {
+            var i = this._children.indexOf(child);
+            if (i >= 0) {
+                this._children.splice(i, 1);
+                this._children.splice(toIdx, 0, child);
+                this._distillEvent('moveChild', child);
+            }
+            else {
+                throw new ValueError("Elemental._movechild: %s is not a member.", child.toString());
             }
         },
         //
@@ -188,7 +390,7 @@ var Elemental = function (opts) {
                 throw new ValueError("Elemenetal._delParent: %s doesn't " +
                     "have %s as a parent.", this.toString(), parent.toString());
             }
-        },
+        },*/
         // Another simple string formater that accepts {tokens} to retrieve properties
         //  of the same name.
         // example:
@@ -389,14 +591,14 @@ var Elemental = function (opts) {
 
             return _.extend(obj, func.call(this, additional || []));
         },
-        _triggerEvent: function (event) {
-            if (this.events[event]) {
-                this.events[event].apply(this, arguments);
-            } // Do nothing if event doesn't exist??
-        }
     });
     
-    this._init(opts);
+    if (noInit !== true)
+        this._init(opts);
+};
+
+Elemental.sub = function () {
+    return new Elemental({}, true);
 };
 
 Elemental.prototype._init = function (opts) {
@@ -409,11 +611,15 @@ Elemental.prototype._init = function (opts) {
         _required: undefined,
         _lockable: false,
         _locked: false,
-        _parents: [],
-        _children: [],
+        _parents: new ElementalArray(this),
+        _children: new ElementalArray(this),
         _events: {},
         _collection: {},
     }, opts);
+
+    // Every Elemental gets its place in the Collection.
+    // Tests on memory consumption should be done.
+    __singletonCollection.add(this);
 
     this._props = ['_type', '_id', '_label', '_value', '_show', '_required',
                     '_lockable', '_locked'];
@@ -503,7 +709,7 @@ Object.defineProperty(Elemental.prototype, 'label', { // tested! (decent coverag
 // `value` property implementation.
 // `value` returns the value.
 // `value`, when set, will execute the ._setValue method and trigger the
-//  iternal onupdate event.
+//  iternal 'updateValue' event.
 Elemental.prototype._valueGetter = function () {
     // Invoke subclass ._getValue.
     return this._getValue(this._value);
@@ -515,7 +721,7 @@ Elemental.prototype._valueSetter = Elemental._decConsistent(
         // Only if value has changed.
         if (value !== this._value) {
             this._value = value;
-            this.onupdate(this);
+            this._distillEvent('updateValue', this, value);
         }
     }, "Elemental.value cannot be set, the Element is locked."
 );
@@ -643,11 +849,11 @@ Object.defineProperty(Elemental.prototype, 'events', {
 
 // `children` property implementation.
 Elemental.prototype._childrenGetter = function () {
-    return this._children;
+    return this._children.toArray();
 };
 Elemental.prototype._childrenSetter = function (value) {
     // Validate the input `value`. Expects an Array of Elemental objects.
-    this._children = [];
+    this._children = new ElementalArray(this);
     for (var i=0; i<value.length; i++) {
         var child = value[i];
         this.addChild(child); // Invoking public??
@@ -663,11 +869,11 @@ Object.defineProperty(Elemental.prototype, 'children', {
 
 // `parents` property implementation.
 Elemental.prototype._parentsGetter = function () {
-    return this._parents;
+    return this._parents.toArray();
 };
 Elemental.prototype._parentsSetter = function (value) {
     // Validate the input `value`. Expects an Array of Elemental objects.
-    this._parents = [];
+    this._parents = new ElementalArray(this);
     for (var i=0; i<value.length; i++) {
         var parent = value[i];
         this.addParent(parent);
@@ -707,6 +913,15 @@ Elemental.prototype._toRender = function (additional) {
     }
 };
 
+Elemental.prototype._triggerEvent = function (event) {
+    // TODO: Also handle event if value is string.
+    //      Similarly to Backbone events, we use that string as a key
+    //      to a property on the Elemental.
+    if (this.events[event]) {
+        this.events[event].apply(this, arguments);
+    } // Do nothing if event doesn't exist??
+};
+
 var _lookupExc = function (funcName) {
     throw new ArgumentError(funcName + ": expected an Elemental object or a " + 
         "string key to `collection.objects`.");
@@ -717,11 +932,13 @@ Elemental.prototype.addChild = function (child) {
     if(!(child instanceof Elemental)) {
         _lookupExc(".addChild");
     }
-    else if (typeof child === "string" && this._collection.objects) { // untested. might refactor.
-        child = this._collection.objects[child];
+    else if (typeof child === "string" && this._collection) { // untested. might refactor.
+        child = this._collection[child];
     }
-    child._addParent(this);
-    this._addChild(child);
+    child._parents.add(this);
+    //child._addParent(this);
+    this._children.add(child);
+    //this._addChild(child);
 };
 
 // Delete a child Elemental.
@@ -729,11 +946,11 @@ Elemental.prototype.delChild = function (child) {
     if (!(child instanceof Elemental)) {
         _lookupExc(".delChild");
     }
-    else if (typeof child === "string" && this._collection.objects) { // untested. might refactor.
-        child = this._collection.objects[child];
+    else if (typeof child === "string" && this._collection) { // untested. might refactor.
+        child = this._collection[child];
     }
-    child._delParent(this);
-    this._delChild(child);
+    child._parents.del(this);
+    this._children.del(child);
 };
 
 // Add a parent Elemental.
@@ -741,11 +958,11 @@ Elemental.prototype.addParent = function (parent) {
     if(!(parent instanceof Elemental)) {
         _lookupExc(".addParent");
     }
-    else if (typeof parent === "string" && this._collection.objects) {
-        parent = this._collection.objects[parent];
+    else if (typeof parent === "string" && this._collection) {
+        parent = this._collection[parent];
     }
-    parent._addChild(this);
-    this._addParent(parent);
+    parent._children.add(this);
+    this._parents.add(parent);
 };
 
 // Delete a parent Elemental.
@@ -753,11 +970,11 @@ Elemental.prototype.delParent = function (parent) {
     if(!(parent instanceof Elemental)) {
         _lookupExc(".delParent");
     }
-    else if (typeof parent === "string" && this._collection.objects) {
-        parent = this._collection.objects[parent];
+    else if (typeof parent === "string" && this._collection) {
+        parent = this._collection[parent];
     }
-    parent._delChild(this);
-    this._delParent(parent);
+    parent._children.del(this);
+    this._parents.del(parent);
 };
 
 // Destroy this Elemental.
@@ -773,12 +990,13 @@ Elemental.prototype.destroy = function () {
         parent._delChild(this);
     }
     this._init(); // Simply _init the object.
-}
+};
 
 // Validate the object.
 // (Implemented in sub-class prototypes.)
 Elemental.prototype.validate = function () { // tested! (full coverage)
-    throw new NotImplementedError("Elemental.validate is not implemented.");
+    // throw new NotImplementedError("Elemental.validate is not implemented.");
+    return true;
 };
 
 // Monkeypatch hasOwnProperty. It's not picking up custom properties in Chrome.
@@ -809,25 +1027,25 @@ Elemental.prototype.toSchema = function (additional) { // tested! (some coverage
 // Map the Elemental.toRender through all children.
 Elemental.prototype.toRender = function (additional) {
     return this._percolateMap(this._toRender, additional || []);
-}
+};
 
 Elemental.prototype.fromSchema = function (schema, collection) {
     throw new NotImplementedError("Temporarily not implemented.");
 };
 
-// Needs to be refactored as either a priveleged _onupdate or "private".
-Elemental.prototype.onupdate = function () {
-    // pass
-};
-
 // Data Point Base object.
 // The bulk of the "Point" implementation is here.
-var Point = function (opts) {
-    this._init(opts);
+var Point = function (opts, noInit) {
+    if (noInit !== true)
+        this._init(opts);
 };
 
-Point.prototype = new Elemental();
+Point.prototype = Elemental.sub();
 Point.prototype.constructor = Point;
+
+Point.sub = function () {
+    return new Point({}, true);
+};
 
 // This ensures that any child classes will have new objects to consume.
 //
@@ -875,7 +1093,7 @@ Object.defineProperty(Point.prototype, 'required', { // tested! (decent coverage
 Point.prototype._lockableGetter = function () {
     return this._distillProp('_lockable');
     //?? return Elemental.prototype._getValue.call(this, value);
-}
+};
 Object.defineProperty(Point.prototype, 'required', { // tested! (decent coverage)
     enumerable: true,
     configurable: true,
@@ -933,32 +1151,27 @@ Point.prototype.toString = function () { // tested! (decent coverage)
     return "Point(" + id + ")";
 };
 
-
-// Onupdate event. Trigger Collection onupdate as well as the Group(s)
-// Refactor / move this
-Point.prototype.onupdate = function () {
-    // Run "onupdate" on the collection if present.
-    if (this._collection.onupdate) {
-        this._collection.onupdate(this);
-    }
-    // Run "onupdate" on any groups.
-    for (var i in this._parents) {
-        var group = this._parents[i];
-        group.onupdate(this);
-    }
+var Numeric = function (opts, noInit) {
+    if (noInit !== true)
+        this._init(opts);
 };
 
-var Numeric = function (opts) {
+Numeric.prototype = Point.sub();
+Numeric.prototype.constructor = Numeric;
+
+// Used by children of the Numeric proto.
+Numeric.sub = function () {
+    return new Numeric({}, true);
+};
+
+Numeric.prototype._init = function (opts) {
     Point.prototype._init.call(this);
     _.extend(this, {
         _type: 'numeric',
         _min: 0,
         _max: -1,
     }, opts);
-}
-
-Numeric.prototype = new Point();
-Numeric.prototype.constructor = Numeric;
+};
 
 Numeric.prototype._minGetter = function () {
     return this._min;
@@ -1031,7 +1244,7 @@ var Int = function (opts) {
     }, opts);
 };
 
-Int.prototype = new Numeric();
+Int.prototype = Numeric.sub();
 Int.prototype.constructor = Int;
 
 Int.prototype._setValue = function (value) { // tested! (decent coverage)
@@ -1048,7 +1261,7 @@ var Float = function (opts) {
     }, opts);
 };
 
-Float.prototype = new Numeric();
+Float.prototype = Numeric.sub();
 Float.prototype.constructor = Float;
 
 Float.prototype._precisionGetter = function () {
@@ -1093,8 +1306,6 @@ Float.prototype._getValue = function (value) {
 };
 
 
-
-
 // Bool Point Type;
 var Bool = function (opts) {
     Point.prototype._init.call(this);
@@ -1104,7 +1315,7 @@ var Bool = function (opts) {
     }, opts);
 };
 
-Bool.prototype = new Point();
+Bool.prototype = Point.sub();
 Bool.prototype.constructor = Bool;
 
 Bool.prototype._setValue = function (value) {
@@ -1135,7 +1346,7 @@ var Str = function (opts) {
     }, opts);
 };
 
-Str.prototype = new Point();
+Str.prototype = Point.sub();
 Str.prototype.constructor = Str;
 
 Object.defineProperty(Str.prototype, 'min', {
@@ -1187,7 +1398,7 @@ var List = function (opts) {
     }, opts);
 };
 
-List.prototype = new Point();
+List.prototype = Point.sub();
 List.prototype.constructor = List;
 
 List.prototype.validate = function () {
@@ -1205,7 +1416,7 @@ var Group = function (opts) {
     this._init(opts);
 };
 
-Group.prototype = new Elemental();
+Group.prototype = Elemental.sub();
 Group.prototype.constructor = Group;
 
 //
@@ -1215,7 +1426,22 @@ Group.prototype._init = function (opts) {
         _type: 'group',
         radio: false, // all members must be bool. ?? why?
         show: false,
-        required: false
+        required: false,
+        events: {
+            updateValue: function (ev, member) {
+                // Check radio buttons.
+                if (member._value && this.radio === true) { 
+                    member._lock = true;
+                    for (var i=0; i<this.members.length; i++) {
+                        var mod_member = this.members[i];
+                        if (mod_member._lock !== true) {
+                            mod_member.value = false;
+                        }
+                    }
+                    delete member._lock;
+                }
+            }
+        }
     }, opts);
     return this; // for convenience only.
 };
@@ -1284,48 +1510,28 @@ Group.prototype.validate = function () { // tested (light coverage)
     }
 };
 
-//
-Group.prototype.add_point = function (point, collection) { // tested (decent coverage)
+// alias to addChild.
+Group.prototype.addPoint = Elemental.prototype.addChild;
+
+/*function (point) { // tested (decent coverage)
     if (point instanceof Point) {
         this._addChild(point);
         point._addParent(this);
     } 
     else {
-        throw new ArgumentError('Group.add_point expected a `Point` object.');
+        throw new ArgumentError('Group.addPoint expected a `Point` object.');
     }
-};
-//
-Group.prototype.del_point = function (point) { // tested (decent coverage)
-    if (point instanceof Point) {
-        this._delChild(point);
-        point._delParent(this, true);
-    }
-    else {
-        throw new ArgumentError('Group.del_point expected a `Point` object.');
-    }
-};
-//
-Group.prototype.onupdate = function (member) {
-    var mod_member;
-    // Check radio buttons.
-    if (member._value && this.radio === true) { 
-        member._lock = true;
-        for (i=0; i<this.members.length; i++) {
-            mod_member = this.members[i];
-            if (mod_member._lock !== true) {
-                mod_member.value = false;
-            }
-        }
-        delete member._lock;
-    }
-};
+};*/
 
+// alias to delChild.
+Group.prototype.delPoint = Elemental.prototype.delChild;
 
+//
 var PointCollection = function (opts) {
     this._init(opts);
 };
 
-PointCollection.prototype = new Elemental();
+PointCollection.prototype = Elemental.sub();
 PointCollection.prototype.constructor = PointCollection;
 
 PointCollection.prototype._init = function (opts) {
@@ -1333,11 +1539,265 @@ PointCollection.prototype._init = function (opts) {
     _.extend(this, {
         _type: 'collection',
         events: {
-            'addElemental': function (ev, datum) {
-                console.log("add Elemental: " + datum);
+            // Event fired when a parent or child is added.
+            addElemental: function (ev, el) {
+                if (el instanceof Elemental) {
+                    this._collection[el.id] = el;
+                }
+            },
+            // Event fired when a parent or child is removed.
+            delElemental: function (ev, el) {
+                /*
+                // We need to also check to see if this elemental is used elsewhere.
+                if (el instanceof Elemental) {
+                    delete this._collection[el.id];
+                }*/ 
             }
         }
-
     }, opts);
     return this;
 };
+
+
+// Backbone plugin
+// TODO: Move to separate file/namespace.
+//          Do this when handling require-compatible packaging, etc.
+if (Backbone && Backbone.VERSION) {
+
+    // Dyanmically set up properties with Model persistence.
+    // These properties were variables and now will go in to a
+    // Backbone.Model.
+
+    // Should this be "collection" enabled in terms of referincing other data?
+    var modelHookProp = function (propName, opts) {
+        var privPropName = '_'+propName,
+            getterName = privPropName+'Getter',
+            setterName = privPropName+'Setter',
+            tmpProp = this[propName],
+            that = this;
+
+        opts = _.extend({enumerable: true,
+                        configurable: true,
+                        writeable: false}, opts || {});
+
+        // "Persist" the property in to the Model.
+        // (This performs no API calls as we're just preparing for
+        // persistence by putting the data in the Backbone.Model).
+        var persistProp = function (propName, propVal) {
+            if (propVal instanceof ElementalArray) {
+                this.set(propName, propVal.toRef());
+            }
+            else {
+                this.set(propName, propVal);
+            }
+        };
+
+        // Get the property from the Backbone.Model.
+        var retreiveProp = function (propName) {
+            var propVal = this.get(propName),
+                that = this;
+
+            // Handle array "type".
+            if (propVal && propVal instanceof Array) {
+                var elementalArray = new ElementalArray(this, propVal);
+                elementalArray.onUpdate = function () {
+                    persistProp.call(that, propName, this);
+                };
+                return elementalArray;
+            }
+            // Just a val.
+            else if (propVal) {
+                return propVal;
+            }
+            // No undefined returned from here.
+            else {
+                return null;
+            }
+        };
+
+        this[getterName] = function () {
+            return retreiveProp.call(that, propName);
+        };
+        this[setterName] = function (propVal) {
+            persistProp.call(this, propName, propVal);
+        };
+        Object.defineProperty(this, propName, _.extend({
+            get: this[getterName],
+            set: this[setterName]
+        }, opts));
+
+        // Let's set the property again.
+        this[propName] = tmpProp;
+    };
+
+    // Somthing will go here. Just not sure what yet.
+    var ElementalModel = Backbone.Model.extend({
+        url: '/temp' // TEMP!
+    });
+
+    // Somthing will go here. Just not sure what yet.
+    var ElementalView = Backbone.View.extend({
+    });
+
+
+    // Mix a Backbone.Model in to an Elemental instance.
+    var mixElementalModel = function (elemental, Model) {
+        var ElementalModel,
+            ModelProto,
+            // This allows us to mix in any Elemental sub-proto as well.
+            ElementalProto = Object.getPrototypeOf(elemental);
+
+        // I believe this is correct. Some simple tests seem to indicate
+        // it is.
+        if (Model && Backbone.Model.prototype.isPrototypeOf(Model.prototype)) {
+            ElementalModel = Model;
+        }
+        else{
+            ElementalModel = Backbone.Model;
+        }
+
+        ModelProto = ElementalModel.prototype;
+        
+        // Should be right, but test thorougly.
+        _.extend(elemental, new ElementalModel);
+
+        // We're using Backbone.Events since we know it's available.
+        _.extend(elemental, Backbone.Events);
+
+        // Extend `_triggerEvent` to include a Backbone.Event trigger as well. 
+        elemental._triggerEvent = function (event) {
+            ElementalProto._triggerEvent.apply(this, arguments);
+            // Trigger backbone event as well since we may have subs.
+            this.trigger(event);
+        };
+
+        // Handle methods that overlap between `Elemental` and
+        // `Backbone.Model`. (Or other comonly used Backbone methods.)
+        //
+        // Extend `destroy` to fire both the Elemental destroy
+        elemental.destroy = function () {
+            ElementalProto.destroy.apply(this, arguments);
+            ModelProto.destroy.apply(this, arguments);
+        };
+
+        elemental.validate = function () {
+            // TODO: Will have to handle model validation later.
+            // This method will have to be significantly
+            // changed in order to handle errors thrown by Elemental.
+            // This is gooood.
+            var _ev = ModelProto.validate,
+                modelValidate = _ev && _ev.apply(this, arguments),
+                // Inverse because Backbone.Model validate requires
+                // a "false" for valid whereas Elemental uses "true".
+                elaValidate = !ElementalProto.validate.apply(this, arguments);
+            return elaValidate;
+        };
+
+
+        // Use Backbone to store "private" data props.
+        modelHookProp.call(elemental, '_id');
+        modelHookProp.call(elemental, '_value');
+
+        return elemental;
+    };
+
+
+
+
+    // Backbone-enabled Elemental Object.
+    var bmElemental = function (opts, noInit) {
+        if (noInit !== true)
+            this._init(opts);
+    };
+
+    // Might not do this here...
+    // bmElemental.prototype = Elemental.sub();
+
+    bmElemental.prototype.constructor = bmElemental;
+
+    bmElemental.sub = function () {
+        return new bmElemental({}, true);
+    };
+
+    bmElemental.prototype._init = function (opts) {
+        opts = opts || {};
+        opts.ElementalModel = opts.ElementalModel || ElementalModel;
+        //opts.ElementalView = opts.ElementalView || ElementalView;
+
+        // Lets go ahead and enable Backbone Events on this as well.
+        _.extend(this, Backbone.Events);
+
+        // This seems to work.
+        _.extend(this, new ElementalModel());
+
+        // Use Backbone to store "private" data props.
+        modelHookProp.call(this, '_id');
+        modelHookProp.call(this, '_value');
+
+        Elemental.prototype._init.call(this, opts);        
+    };
+
+    bmElemental.prototype._triggerEvent = function (event) {
+        Elemental.prototype._triggerEvent.apply(this, arguments);
+        this.trigger(event);
+    };
+
+    // Handle overlapping methods.
+    bmElemental.prototype.destroy = function () {
+        Elemental.prototype.destroy.apply(this, arguments);
+        this.ElementalModel.prototype.destroy.apply(this, arguments);
+    };
+
+    bmElemental.prototype.validate = function () {
+        // TODO: Will have to handle model validation later.
+        // This method will have to be significantly
+        // changed in order to handle errors thrown by Elemental.
+        // This is gooood.
+        var _ev = this.ElementalModel.prototype.validate,
+            modelValidate = _ev && _ev.apply(this, arguments),
+            elaValidate = !Elemental.prototype.validate.apply(this, arguments);
+
+        // Inverse because Backbone.Model validate requires a "false" for valid.
+        return elaValidate;
+    };
+
+    // Backbone Enabled Elemental Schema.
+    // Implements the "schema" of an Elemental as a Backbone Model.
+    // Useful for persisting an Elemental schema.
+    var bmsElemental = function (opts) {
+        this._init(opts);
+    };
+
+    bmsElemental.prototype = bmElemental.sub();
+    bmsElemental.prototype.constructor = bmsElemental;
+
+    bmsElemental.prototype._init = function (opts) {
+        modelHookProp.call(this, '_label');
+        modelHookProp.call(this, '_input');
+        modelHookProp.call(this, '_show');
+        modelHookProp.call(this, '_required');
+        modelHookProp.call(this, '_lockable');
+        modelHookProp.call(this, '_locked');
+        modelHookProp.call(this, '_parents');
+        modelHookProp.call(this, '_children');
+
+        // What else??? 
+        bmElemental.prototype._init.apply(this, arguments);
+    };
+
+
+    var mixSchema = function (elemental) {
+        elemental = mixElementalModel.apply(this, arguments);
+
+        modelHookProp.call(elemental, '_label');
+        modelHookProp.call(elemental, '_input');
+        modelHookProp.call(elemental, '_show');
+        modelHookProp.call(elemental, '_required');
+        modelHookProp.call(elemental, '_lockable');
+        modelHookProp.call(elemental, '_locked');
+        modelHookProp.call(elemental, '_parents');
+        modelHookProp.call(elemental, '_children');
+
+        return elemental;
+    }
+}

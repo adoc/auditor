@@ -3,11 +3,13 @@ define([
     'underscore',
     'backbone',
     'elements',
+    'elementalViews',
     'text!play.html.tmpl',
     'text!pcollection.html.tmpl',
     'text!pcollection_admin.html.tmpl'
     ],
-    function($, _, Backbone, Elements, play_tmpl, pcollection_tmpl, pcollection_admin_tmpl) {
+    function ($, _, Backbone, E, EV, play_tmpl, pcollection_tmpl,
+                pcollection_admin_tmpl) {
         
         var renderTemplate = function (tmpl) {
             return _.template(tmpl, {
@@ -16,22 +18,148 @@ define([
             
         }
 
-        var PlayView = Backbone.View.extend({
+        // Parent View for most Elemental manipulation.
+
+        // Required properties to be implemented by subclasses:
+        //  `parentElemental`
+        //  `collection`
+        var ManipulateElementals = Backbone.View.extend({
+            // Selector for all manipulable elements.
+            selAll: '.elemental',
+
+            // Make sure to initialize from sub-classes that have their
+            // own `initialize`.
+            // OderingElementals.prototype.initialize.apply(this, arguments);
+            // from child `initialize`.
+            // Expects `collection` property
+            initialize: function () {
+                if (!this.parentElemental) {
+                    throw "ManipulateElementals View must be initialized with " +
+                            "an `order` array.";
+                }
+                if (!this.collection) {
+                    throw "ManipulateElementals View requires Elemental " + 
+                            "`collection` property.";
+                }
+                this.renderDelay = 100;
+                // Set up our own events.
+                var doEvents = ['drag', 'drop', 'dragOver', 'dragEnter', 'dragLeave'];
+                /*
+                _.extend(this.events, {
+                    'drag ' + this.selAll: 'drag',
+                    'drop ' + this.selAll: 'drop',
+                    'dragover ' + this.selAll: 'dragOver',
+                    'dragenter ' + this.selAll: 'dragEnter',
+                    'dragleave ' + this.selAll: 'dragLeave',
+                    'dragend ' + this.selAll: 'dragEnd'
+                });*/
+                this.reset();
+            },
+            reset: function () {
+                this.renderLock = false;
+                this.draggedEla = null;
+                this.draggedIdx = null;
+                this.overIdx = null;
+            },
+            // Gets event target elemental index in group.
+            _getTargetIdx: function (ev){
+                var target = ev.target,
+                    targetEl = this.collection[target.id];
+                return this.parentElemental.children.indexOf(targetEl);
+            },
+            _getOffset: function (ev) {
+                var targetIdx = this.getTargetIdx(ev);
+                if (targetIdx >= 0)
+                    return targetIdx - this.draggedIdx;
+            },
+            // Pass-through events. (mainly for reference.)
+            drag: function (ev) {
+                ev.preventDefault();
+                var dragged = ev.target;
+                // Reference the `collection` to get the Elemental.
+                this.draggedEla = this.collection[dragged.id];
+                this.draggedIdx = this.parentElemental.children.indexOf(this.draggedEla);
+                return false;
+            },
+            drop: function (ev) {
+                console.log('drop...');
+                ev.preventDefault();
+                this.reset();
+                this.renderOnly();
+                return false;
+            },
+            dragOver: function (ev) { },
+            dragEnter: function (ev) { },
+            dragLeave: function (ev) { },
+            dragEnd: function (ev) { }
+        });
+
+        var NestingElementals = ManipulateElementals.extend({
+            dragOver: function (ev) {
+                console.log('over');
+                var that = this,
+                    dropAllow = false,
+                    skipRender = false,
+                    targetIdx = this._getTargetIdx(ev);
+
+                // Prevent the default 'dragover' action.
+                ev.preventDefault();
+                
+                if (targetIdx >= 0 && this.overIdx !== targetIdx) {
+                    this.overIdx = targetIdx;
+                    dropAllow = true;
+                }
+                else {
+                    skipRender = true;
+                }
+
+                // Render with delay because "dragover" is fired many
+                // times per second.
+                console.log(this.renderLock, skipRender);
+                if (this.renderLock === false && skipRender !== true) {
+                    console.log('render');
+                    setTimeout(function () { that.renderLock = false; },
+                                    this.renderDelay);
+                    this.renderLock = true;
+                    this.renderOnly();
+                }
+
+                return dropAllow;
+            },
+            drop: function (ev) {
+                console.log('nest drop!');
+
+                return ManipulateElementals.prototype.drop.apply(this, arguments);
+            }
+
+        });
+
+
+        var PlayView = NestingElementals.extend({
             el: '.page',
             events: {
                 'click button[name="new"]': 'newElemental',
-                'click .elemental': 'select',
-                'drag .elemental': 'drag',
-                'drop .elemental': 'drop',
-                'dragover .elemental': 'dragover'
+                'click .elemental': 'select'
             },
             initialize: function () {
-                this.collection = new Elemental();
+                this.parentElemental = new PointCollection();
+                this.collection = this.parentElemental._collection;
                 this.selected = null;
-                this.dragged = null;
+                ManipulateElementals.prototype.initialize.call(this, this.parentElemental.children);
+
+                // Just add 10 elements.
+                for (var i=0; i < 10; i++) {
+                    this.newElemental();
+                }
+
+
             },
             newElemental: function (ev) {
-                this.collection.addChild(new Elemental());
+                var e = new Elemental();
+                this.parentElemental.addChild(e);
+
+                //new EV.ElementalView(this.el, e);
+
                 this.renderOnly();
                 return false;
             },
@@ -43,29 +171,6 @@ define([
                     this.selected = ev.target;
                 }
                 this.renderOnly();
-                return false;
-            },
-            drag: function (ev) {
-                this.dragged = ev.target;
-                return false;
-            },
-            drop: function (ev) {
-                ev.preventDefault();
-                this.dragged = null;
-                return false;
-            },
-            dragover: function (ev) {
-                ev.preventDefault();
-
-                var target = ev.target,
-                    draggedEl = $(this.dragged.id).data('Elemental'),
-                    targetEl = $(target).data('Elemental'),
-                    draggedIdx = this.collection.children.indexOf(draggedEl),
-                    targetIdx = this.collection.children.indexOf(targetEl);
-
-                console.log(draggedEl);
-                console.log(targetEl);
-
                 return false;
             },
             renderOnly: function () {

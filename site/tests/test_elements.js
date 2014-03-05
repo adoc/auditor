@@ -6,6 +6,8 @@ define(['qunit', 'elements'],
             // =============
             // (Functional tests should go in another module??)
 
+            module("General functions");
+
             test("func: pack()...", function () {
                 var obj = {id: 'object'};
                 deepEqual(pack(obj), {'object': {}});
@@ -30,6 +32,45 @@ define(['qunit', 'elements'],
                 var obj = {'object': {}, 'whatdo_object': 'ohnoes'};
                 throws(function () { unpack(obj); }, ValueError)
             });
+
+            module('ElementalArray');
+
+            test("...priv method: `ElementalArray.add`...", function () {
+                var e = new ElementalArray();
+                
+                e.add(123);
+                deepEqual(e[0], 123);
+
+                e.add(null);
+                deepEqual(e[1], null);
+
+                // set-like but throws when trying to add an identical member.
+                throws(function () { e.add(123); }, ValueError);
+            });
+
+            test("...priv method: `ElementalArray.del`...", function () {
+                var e = new ElementalArray();
+
+                e.add(1);
+                e.add(2);
+                e.add(3);
+                e.add(4);
+
+                e.del(3);
+                deepEqual(e.toArray(), [1,2,4]);
+
+                e.del(1);
+                deepEqual(e.toArray(), [2,4]);
+
+                e.del(4);
+                deepEqual(e.toArray(), [2]);
+
+                e.del(2);
+                deepEqual(e.toArray(), []);
+
+                throws(function () { e.del(1); }, ValueError);
+            }); 
+
 
             // Elemental
             // =========
@@ -82,6 +123,7 @@ define(['qunit', 'elements'],
             
             // "Private Methods"
             // -----------------
+            /*
             test("...priv method: `Elemental._addChild`...", function () {
                 var g1 = new Elemental(),
                     p1 = new Elemental(),
@@ -128,7 +170,7 @@ define(['qunit', 'elements'],
                 deepEqual(p.parents.length, 0);
 
                 throws(function() { p._delParent(g1); }, ValueError);
-            });
+            });*/
             test("...priv method: `Elemental._parseDef`...", function () {
                 var e = new Elemental();
                 e.value = 'value111';
@@ -607,11 +649,28 @@ define(['qunit', 'elements'],
             });
 
             test("...pub method: `Elemental.addParent`...", function () {
+                var e1 = new Elemental(),
+                    e2 = new Elemental(),
+                    g1 = new Elemental();
+
+                e1.addParent(g1);
+                deepEqual(e1.parents[0], g1);
+                deepEqual(g1.children[0], e1);
 
             });
 
             test("...pub method: `Elemental.delParent`...", function () {
-                
+                var e1 = new Elemental(),
+                    e2 = new Elemental(),
+                    g1 = new Elemental();
+
+                e1.addParent(g1);
+                deepEqual(e1.parents[0], g1);
+                deepEqual(g1.children[0], e1);
+
+                 e1.delParent(g1);
+                 deepEqual(e1.parents, []);
+                 deepEqual(g1.children, []);
             });
 
             test("...pub method: `Elemental.validate`...", function () {
@@ -657,7 +716,7 @@ define(['qunit', 'elements'],
             test("Constructor: `Point`...", function () {
                 var p = new Point();
                 deepEqual(p.type, 'point');
-                deepEqual(p._parents, []);
+                deepEqual(p._parents.toArray(), []);
                 deepEqual(p.groups, []);
             });
             test("...priv method: `Point._distillProp`...", function () {
@@ -677,6 +736,7 @@ define(['qunit', 'elements'],
                 deepEqual(p2._distillProp('value'), 'boobers');
                 deepEqual(p3._distillProp('value'), 'beep')
             });
+            /*
             test("...priv method: `Point._addParent`...", function () {
                 var p = new Point(),
                     g1 = new Group(),
@@ -698,7 +758,7 @@ define(['qunit', 'elements'],
                 deepEqual(p.groups.length, 0);
                 throws(function() { p._delParent(g1); }, ValueError);
             });
-
+            */
             test("...prop: `Point.show`..." , function () {
                 var g = new Group({show: true}),
                     p = new Point({groups: [g]});
@@ -1328,6 +1388,7 @@ define(['qunit', 'elements'],
                 deepEqual(g1.label, 'Group 1');
                 deepEqual(g1._label, 'Group 1');
             });
+            /*
             test("...priv method: `Group._addChild`...", function () {
                 var g1 = new Group(),
                     p1 = new Point();
@@ -1342,6 +1403,7 @@ define(['qunit', 'elements'],
                 deepEqual(g1.members.length, 0);
                 throws(function () { g1._delChild(p1); }, ValueError);
             });
+            */
             test("...prop: `Group.members`...", function () {
                 var g = new Group();
                 deepEqual(g.members, []);
@@ -1372,24 +1434,22 @@ define(['qunit', 'elements'],
                 var g1 = new Group();
                 deepEqual(g1.validate(), undefined);
             });
-            test("...pub method: `Group.add_point`...", function () {
+            test("...pub method: `Group.addPoint`...", function () {
                 var g1 = new Group();
                 var p1 = new Point();
-                g1.add_point(p1);
+                g1.addPoint(p1);
                 deepEqual(g1.members[0], p1);
                 deepEqual(p1.groups[0], g1);
-                throws(function () { g1.add_point(p1)}, ValueError);
+                throws(function () { g1.addPoint(p1)}, ValueError);
             });
-            test("...pub method: `Group.del_point`...", function () {
+            test("...pub method: `Group.delPoint`...", function () {
                 var g1 = new Group(),
                     p1 = new Point({groups: [g1]});
-                g1.del_point(p1);
+                g1.delPoint(p1);
                 deepEqual(g1.members.length, 0);
                 deepEqual(p1.groups.length, 0);
-                throws(function () {g1.del_point(p1)}, ValueError);
+                throws(function () {g1.delPoint(p1)}, ValueError);
             });
-
-
             test('Test `PointCollection` class...', function () {
                 var c = new PointCollection();
                 deepEqual(c.name, '');
@@ -1408,6 +1468,11 @@ define(['qunit', 'elements'],
             });
 
 
+            module('Elemental-Backbone');
+
+            test('bmSetupProp', function () {
+                
+            });
 
 
         }
