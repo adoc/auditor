@@ -1237,7 +1237,7 @@ Numeric.prototype.validate = function () { // tested! (decent coverage)
 
 // Int Point Type.
 var Int = function (opts) {
-    Point.prototype._init.call(this);
+    Numeric.prototype._init.call(this);
     _.extend(this, {
         _type: 'int',
         value: 0,
@@ -1253,7 +1253,7 @@ Int.prototype._setValue = function (value) { // tested! (decent coverage)
 
 // Float Point Type.
 var Float = function (opts) {
-    Point.prototype._init.call(this);
+    Numeric.prototype._init.call(this);
     _.extend(this, {
         _type: 'float',
         _value: 0.0,
@@ -1566,15 +1566,12 @@ if (Backbone && Backbone.VERSION) {
 
     // Dyanmically set up properties with Model persistence.
     // These properties were variables and now will go in to a
-    // Backbone.Model.
-
-    // Should this be "collection" enabled in terms of referincing other data?
+    // Backbone.Model for further persistence.
     var modelHookProp = function (propName, opts) {
         var privPropName = '_'+propName,
             getterName = privPropName+'Getter',
             setterName = privPropName+'Setter',
-            tmpProp = this[propName],
-            that = this;
+            tmpProp = this[propName];
 
         opts = _.extend({enumerable: true,
                         configurable: true,
@@ -1583,7 +1580,7 @@ if (Backbone && Backbone.VERSION) {
         // "Persist" the property in to the Model.
         // (This performs no API calls as we're just preparing for
         // persistence by putting the data in the Backbone.Model).
-        var persistProp = function (propName, propVal) {
+        var persistProp = function (propVal) {
             if (propVal instanceof ElementalArray) {
                 this.set(propName, propVal.toRef());
             }
@@ -1593,7 +1590,7 @@ if (Backbone && Backbone.VERSION) {
         };
 
         // Get the property from the Backbone.Model.
-        var retreiveProp = function (propName) {
+        var retreiveProp = function () {
             var propVal = this.get(propName),
                 that = this;
 
@@ -1601,7 +1598,7 @@ if (Backbone && Backbone.VERSION) {
             if (propVal && propVal instanceof Array) {
                 var elementalArray = new ElementalArray(this, propVal);
                 elementalArray.onUpdate = function () {
-                    persistProp.call(that, propName, this);
+                    persistProp.call(that, this);
                 };
                 return elementalArray;
             }
@@ -1616,31 +1613,50 @@ if (Backbone && Backbone.VERSION) {
         };
 
         this[getterName] = function () {
-            return retreiveProp.call(that, propName);
+            console.log('getter');
+            return retreiveProp.call(this);
         };
         this[setterName] = function (propVal) {
-            persistProp.call(this, propName, propVal);
+            console.log('setter');
+            persistProp.call(this, propVal);
         };
+
+        delete this[propName];
+
         Object.defineProperty(this, propName, _.extend({
             get: this[getterName],
             set: this[setterName]
         }, opts));
 
         // Let's set the property again.
-        this[propName] = tmpProp;
+        // This is wrong and buggy.
+        // this[setterName](tmpProp);
     };
 
-    // Somthing will go here. Just not sure what yet.
-    var ElementalModel = Backbone.Model.extend({
-        url: '/temp' // TEMP!
-    });
+    var resetProp = function (propName, opts) {
+        var tmpProp = this[propName];
+        /*
+        var getterName = propName+'Getter',
+            setterName = propName+'Setter',
+            Proto = Object.getPrototypeOf(this);
+        */
 
-    // Somthing will go here. Just not sure what yet.
-    var ElementalView = Backbone.View.extend({
-    });
-
+        // This should just re-define the property with existing options.
+        /*
+        Object.defineProperty(this, propName, {
+            get: this[getterName],
+            set: this[setterName]
+        });*/
+        this.unset(propName);
+        delete this[propName];
+        this[propName] = tmpProp;
+    }
 
     // Mix a Backbone.Model in to an Elemental instance.
+    // Also mixes in Backbone.Events.
+    //
+    // `Model` argument is optional as `Backbone.Model` will be used if
+    // undefined or not a `Backbone.Model` sub-proto.
     var mixElementalModel = function (elemental, Model) {
         var ElementalModel,
             ModelProto,
@@ -1652,13 +1668,15 @@ if (Backbone && Backbone.VERSION) {
         if (Model && Backbone.Model.prototype.isPrototypeOf(Model.prototype)) {
             ElementalModel = Model;
         }
-        else{
+        else {
             ElementalModel = Backbone.Model;
         }
 
         ModelProto = ElementalModel.prototype;
         
-        // Should be right, but test thorougly.
+        // Also cloning the elemental here.
+        elemental = _.extend({}, elemental);
+
         _.extend(elemental, new ElementalModel);
 
         // We're using Backbone.Events since we know it's available.
@@ -1693,7 +1711,6 @@ if (Backbone && Backbone.VERSION) {
             return elaValidate;
         };
 
-
         // Use Backbone to store "private" data props.
         modelHookProp.call(elemental, '_id');
         modelHookProp.call(elemental, '_value');
@@ -1701,91 +1718,7 @@ if (Backbone && Backbone.VERSION) {
         return elemental;
     };
 
-
-
-
-    // Backbone-enabled Elemental Object.
-    var bmElemental = function (opts, noInit) {
-        if (noInit !== true)
-            this._init(opts);
-    };
-
-    // Might not do this here...
-    // bmElemental.prototype = Elemental.sub();
-
-    bmElemental.prototype.constructor = bmElemental;
-
-    bmElemental.sub = function () {
-        return new bmElemental({}, true);
-    };
-
-    bmElemental.prototype._init = function (opts) {
-        opts = opts || {};
-        opts.ElementalModel = opts.ElementalModel || ElementalModel;
-        //opts.ElementalView = opts.ElementalView || ElementalView;
-
-        // Lets go ahead and enable Backbone Events on this as well.
-        _.extend(this, Backbone.Events);
-
-        // This seems to work.
-        _.extend(this, new ElementalModel());
-
-        // Use Backbone to store "private" data props.
-        modelHookProp.call(this, '_id');
-        modelHookProp.call(this, '_value');
-
-        Elemental.prototype._init.call(this, opts);        
-    };
-
-    bmElemental.prototype._triggerEvent = function (event) {
-        Elemental.prototype._triggerEvent.apply(this, arguments);
-        this.trigger(event);
-    };
-
-    // Handle overlapping methods.
-    bmElemental.prototype.destroy = function () {
-        Elemental.prototype.destroy.apply(this, arguments);
-        this.ElementalModel.prototype.destroy.apply(this, arguments);
-    };
-
-    bmElemental.prototype.validate = function () {
-        // TODO: Will have to handle model validation later.
-        // This method will have to be significantly
-        // changed in order to handle errors thrown by Elemental.
-        // This is gooood.
-        var _ev = this.ElementalModel.prototype.validate,
-            modelValidate = _ev && _ev.apply(this, arguments),
-            elaValidate = !Elemental.prototype.validate.apply(this, arguments);
-
-        // Inverse because Backbone.Model validate requires a "false" for valid.
-        return elaValidate;
-    };
-
-    // Backbone Enabled Elemental Schema.
-    // Implements the "schema" of an Elemental as a Backbone Model.
-    // Useful for persisting an Elemental schema.
-    var bmsElemental = function (opts) {
-        this._init(opts);
-    };
-
-    bmsElemental.prototype = bmElemental.sub();
-    bmsElemental.prototype.constructor = bmsElemental;
-
-    bmsElemental.prototype._init = function (opts) {
-        modelHookProp.call(this, '_label');
-        modelHookProp.call(this, '_input');
-        modelHookProp.call(this, '_show');
-        modelHookProp.call(this, '_required');
-        modelHookProp.call(this, '_lockable');
-        modelHookProp.call(this, '_locked');
-        modelHookProp.call(this, '_parents');
-        modelHookProp.call(this, '_children');
-
-        // What else??? 
-        bmElemental.prototype._init.apply(this, arguments);
-    };
-
-
+    // Mix a Backbone.Model in with the Elemental instance Schema.
     var mixSchema = function (elemental) {
         elemental = mixElementalModel.apply(this, arguments);
 
@@ -1798,6 +1731,8 @@ if (Backbone && Backbone.VERSION) {
         modelHookProp.call(elemental, '_parents');
         modelHookProp.call(elemental, '_children');
 
+        //resetProp.call(elemental, '_value');
+
         return elemental;
-    }
+    };
 }

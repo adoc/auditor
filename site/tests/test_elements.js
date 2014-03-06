@@ -36,39 +36,52 @@ define(['qunit', 'elements'],
             module('ElementalArray');
 
             test("...priv method: `ElementalArray.add`...", function () {
-                var e = new ElementalArray();
-                
-                e.add(123);
-                deepEqual(e[0], 123);
 
-                e.add(null);
-                deepEqual(e[1], null);
+
+                var e = new ElementalArray(),
+                    e1 = new Elemental(),
+                    e2 = new Elemental();
+                
+                e.add(e1);
+                deepEqual(e[0], e1);
+
+                e.add(e2);
+                deepEqual(e[1], e2);
 
                 // set-like but throws when trying to add an identical member.
-                throws(function () { e.add(123); }, ValueError);
+                throws(function () { e.add(e1); }, ValueError);
+
+                // Error whey trying to add a non-Elemental value.
+                throws(function () { e.add(1234); }, ValueError);
             });
 
             test("...priv method: `ElementalArray.del`...", function () {
-                var e = new ElementalArray();
+                var e = new ElementalArray(),
+                    e1 = new Elemental(),
+                    e2 = new Elemental(),
+                    e3 = new Elemental(),
+                    e4 = new Elemental();
 
-                e.add(1);
-                e.add(2);
-                e.add(3);
-                e.add(4);
+                e.add(e1);
+                e.add(e2);
+                e.add(e3);
+                e.add(e4);
 
-                e.del(3);
-                deepEqual(e.toArray(), [1,2,4]);
+                e.del(e3);
+                deepEqual(e.toArray(), [e1, e2, e4]);
 
-                e.del(1);
-                deepEqual(e.toArray(), [2,4]);
+                e.del(e1);
+                deepEqual(e.toArray(), [e2, e4]);
 
-                e.del(4);
-                deepEqual(e.toArray(), [2]);
+                e.del(e4);
+                deepEqual(e.toArray(), [e2]);
 
-                e.del(2);
+                e.del(e2);
                 deepEqual(e.toArray(), []);
 
                 throws(function () { e.del(1); }, ValueError);
+
+                throws(function () { e.del(e1); }, ValueError);
             }); 
 
 
@@ -675,7 +688,7 @@ define(['qunit', 'elements'],
 
             test("...pub method: `Elemental.validate`...", function () {
                 var e = new Elemental();
-                throws(e.validate, NotImplementedError);
+                deepEqual(e.validate(), true);
             });
             test("...pub method: `Elemental.evaluate`...", function () {
                 var e = new Elemental();
