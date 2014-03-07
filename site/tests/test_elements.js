@@ -7,7 +7,6 @@ define(['qunit', 'elements'],
             // (Functional tests should go in another module??)
 
             module("General functions");
-
             test("func: pack()...", function () {
                 var obj = {id: 'object'};
                 deepEqual(pack(obj), {'object': {}});
@@ -18,7 +17,6 @@ define(['qunit', 'elements'],
                 var obj = {val: 100, id: 'object', mine: {another:'object!'}};
                 deepEqual(pack(obj), {'object': {val: 100, mine: {another: 'object!'}}});
             });
-
             test("func: unpack()...", function () {
                 var obj = {'object': {}};
                 deepEqual(unpack(obj), {id: 'object'});
@@ -34,10 +32,26 @@ define(['qunit', 'elements'],
             });
 
             module('ElementalArray');
+            test("Construction...", function () {
+                var e1 = new Elemental(),
+                    e2 = new Elemental(),
+                    e3 = new Elemental(),
+                    ea1 = new ElementalArray(),
+                    ea2 = new ElementalArray(e1),
+                    ea3 = new ElementalArray(e3, [e1, e2]);
 
-            test("...priv method: `ElementalArray.add`...", function () {
+                    ok(ea1 instanceof ElementalArray);
+                    ok(ea2 instanceof ElementalArray);
+                    ok(ea3 instanceof ElementalArray);
 
+                    deepEqual(ea1._owner, undefined);
+                    deepEqual(ea2._owner, e1);
+                    deepEqual(ea3._owner, e3);
 
+                    deepEqual(Array.prototype.slice.call(ea3), [e1, e2]);
+            });
+            // ElementalArray.add
+            test("`add()`...", function () {
                 var e = new ElementalArray(),
                     e1 = new Elemental(),
                     e2 = new Elemental();
@@ -54,8 +68,8 @@ define(['qunit', 'elements'],
                 // Error whey trying to add a non-Elemental value.
                 throws(function () { e.add(1234); }, ValueError);
             });
-
-            test("...priv method: `ElementalArray.del`...", function () {
+            // ElementalArray.del
+            test("`del()`...", function () {
                 var e = new ElementalArray(),
                     e1 = new Elemental(),
                     e2 = new Elemental(),
@@ -84,13 +98,9 @@ define(['qunit', 'elements'],
                 throws(function () { e.del(e1); }, ValueError);
             }); 
 
-
+            module("Elemental");
             // Elemental
-            // =========
-
-            // Constructor
-            // -----------
-            test("Constructor: `Elemental`...", function () {
+            test("Construction...", function () {
                 var e = new Elemental();
                 deepEqual(e.id.length, 36);
                 deepEqual(e.type, 'elemental');
@@ -116,10 +126,8 @@ define(['qunit', 'elements'],
                 deepEqual(e.show, true);
                 deepEqual(e.label, 'this');
             });
-
-            // "Class Methods"
-            // ---------------
-            test("...class method: `Elemental._decConsistent`...", function () {
+            // Elemental._decConsistent
+            test("`_decConsistent()` \"class\" method...", function () {
                 function _consistentFunction() {
                     this.dummy = 'Uh oh we did something';
                 }
@@ -133,58 +141,8 @@ define(['qunit', 'elements'],
                 consistentFunction.call(e);
                 deepEqual(e.dummy, 'Uh oh we did something');
             });
-            
-            // "Private Methods"
-            // -----------------
-            /*
-            test("...priv method: `Elemental._addChild`...", function () {
-                var g1 = new Elemental(),
-                    p1 = new Elemental(),
-                    p2 = new Elemental({id: 'id1'});
-                g1._addChild(p1);
-                deepEqual(g1.children[0], p1);
-                
-                g1._addChild(p2);
-                deepEqual(g1.children[1], p2);
-
-                throws(function () { g1._addChild(p1); }, ValueError);
-            });
-            test("...priv method: `Elemental._delChild`...", function () {
-                var p1 = new Elemental(),
-                    p2 = new Elemental({id: 'id1'}),
-                    g1 = new Elemental({children: [p1, p2]});
-                g1._delChild(p1);
-                deepEqual(g1.children.length, 1);
-
-                g1._delChild(p2);
-                deepEqual(g1.children.length, 0);
-
-                throws(function () { g1._delChild(p1); }, ValueError);
-            });
-            test("...priv method: `Elemental._addParent`...", function () {
-                var p = new Elemental(),
-                    g1 = new Elemental(),
-                    g2 = new Elemental();
-                p._addParent(g1);
-                deepEqual(p.parents.indexOf(g1), 0);
-                p._addParent(g2);
-                deepEqual(p.parents.indexOf(g2), 1);
-                deepEqual(p.parents.length, 2);
-
-                throws(function() { p._addParent(g1); }, ValueError);
-            });
-            test("...priv method: `Elemental._delParent`...", function () {
-                var g1 = new Elemental(),
-                    g2 = new Elemental(),
-                    p = new Elemental({parents: [g1, g2]});
-                p._delParent(g1);
-                deepEqual(p.parents[0], g2);
-                p._delParent(g2);
-                deepEqual(p.parents.length, 0);
-
-                throws(function() { p._delParent(g1); }, ValueError);
-            });*/
-            test("...priv method: `Elemental._parseDef`...", function () {
+            // Elemental._parseDef
+            test("`_parseDef()`...", function () {
                 var e = new Elemental();
                 e.value = 'value111';
                 deepEqual(e._parseDef('{value}==={value}'),
@@ -222,7 +180,8 @@ define(['qunit', 'elements'],
                 deepEqual(e._parseDef('{required}==={required}', true),
                                 'false===false');
             });
-            test("...priv method: `Elemental._parseCondition`...", function () {
+            // Elemental._parseCondition
+            test("`_parseCondition()`...", function () {
                 var e = new Elemental();
                 deepEqual(e._parseCondition('this==True'),
                             'this===true');
@@ -233,7 +192,8 @@ define(['qunit', 'elements'],
                 deepEqual(e._parseCondition('this===true'), 'this===true');
                 deepEqual(e._parseCondition('this===false'), 'this===false');
             });
-            test("...priv method: `Elemental._getProp`...", function () {
+            // Elemental._getProp
+            test("`_getProp()`...", function () {
                 var e = new Elemental({tempyprop: "something here!!", nullprop: null});
                 function simpleGetter(key) {
                     return key;
@@ -250,7 +210,8 @@ define(['qunit', 'elements'],
 
                 deepEqual(e._getProp('nullprop', simpleGetter, nullGetter), "null");
             });
-            test("...priv method: `Elemental._getProps'...", function () {
+            // Elemental._getProps
+            test("`_getProps()'...", function () {
                 var e = new Elemental();
                 deepEqual(e._getProps(), {id: e.id});
 
@@ -269,7 +230,8 @@ define(['qunit', 'elements'],
 
                 throws(function() {e._getProps(['_getProps']); }, ValueError);
             });
-            test("...priv method: `Elemental._distillProp`...", function () {
+            // Elemental._distillProp
+            test("`_distillProp()`...", function () {
                 var e1 = new Elemental({prop1: 'property1'}),
                     e2 = new Elemental({prop2: 'property2', parents: [e1]}),
                     e3 = new Elemental({prop3: 'property3', parents: [e2]});
@@ -302,7 +264,8 @@ define(['qunit', 'elements'],
                 deepEqual(e2._distillProp('prop3'), undefined);
                 deepEqual(e3._distillProp('prop3'), 'property3');
             });
-            test("...priv method: `Elemental._percolateProp`...", function () {
+            // Elemental._percolateProp
+            test("`_percolateProp()`...", function () {
                 var e3 = new Elemental({prop3: 'property3'}),
                     e2 = new Elemental({prop2: 'property2', children: [e3]}),
                     e1 = new Elemental({prop1: 'property1', children: [e2]});
@@ -336,7 +299,8 @@ define(['qunit', 'elements'],
                 deepEqual(e3._percolateProp('prop3'), 'property3');
 
             });
-            test("...priv method: `Elemental._distillMap`...", function () {
+            // Elemental._distillMap
+            test("`_distillMap()`...", function () {
                 var e1 = new Elemental({id: 'e1'}),   
                     e2 = new Elemental({id: 'e2'}),
                     g1 = new Elemental({id: 'g1', parents: [e1, e2]});
@@ -355,7 +319,8 @@ define(['qunit', 'elements'],
                     }
                 });
             });
-            test("...priv method: `Elemental._percolateMap`...", function () {
+            // Elemental._percolateMap
+            test("`_percolateMap()`...", function () {
                 var e1 = new Elemental({id: 'e1'}),   
                     e2 = new Elemental({id: 'e2'}),
                     g1 = new Elemental({id: 'g1', children: [e1, e2]});
@@ -417,7 +382,8 @@ define(['qunit', 'elements'],
                     }
                 });
             });
-            test("...pub method: `Elemental._init`...", function () {
+            // Elemental._init
+            test("`_init()`...", function () {
                 var e = new Elemental(),
                     same_e = e._init();
                 deepEqual(e, same_e);
@@ -428,9 +394,8 @@ define(['qunit', 'elements'],
                 deepEqual(same_e.id, 'myid');
                 deepEqual(e.show, true);
             });
-            //  "Private" Proto Methods:
-            //  ------------------------
-            test("...pub method: `Elemental._getValue`...", function () {
+            // Elemental._getValue
+            test("`_getValue()`...", function () {
                 var e = new Elemental();
                 deepEqual(e._getValue('value'), 'value');
                 deepEqual(e._getValue(0), 0);
@@ -441,7 +406,8 @@ define(['qunit', 'elements'],
                 deepEqual(e._getValue(null), null);
                 deepEqual(e._getValue(undefined), null);
             });
-            test("...pub method: `Elemental._setValue`...", function () {
+            // Elemental._setValue
+            test("`_setValue()`...", function () {
                 var e = new Elemental();
                 deepEqual(e._setValue('value'), 'value');
                 deepEqual(e._setValue(0), 0);
@@ -450,7 +416,8 @@ define(['qunit', 'elements'],
                 deepEqual(e._setValue(true), true);
                 deepEqual(e._setValue(false), false);
             });
-            test("...pub method: `Elemental._toSchema`...", function () {
+            // Elemental._toSchema
+            test("`_toSchema()`...", function () {
                 // base
                 var e = new Elemental();
                 deepEqual(e._toSchema(), {_type: 'elemental', _id: e.id});
@@ -475,7 +442,8 @@ define(['qunit', 'elements'],
                 deepEqual(e._toSchema(), {_type: 'elemental', _id: 'id1', _label: 'label1',
                                             _show: true, _required: true});
             });
-            test("...pub method: `Elemental._toRender`...", function () {
+            // Elemental._toRender
+            test("`_toRender()`...", function () {
                 // Base Elemental
                 var p = new Elemental();
                 deepEqual(p._toRender(),{});
@@ -495,10 +463,8 @@ define(['qunit', 'elements'],
                 var p = new Elemental({id: 'id1', label: 'label1', required: true, value: 'value', show: true});
                 deepEqual(p._toRender(), {'id1': {label: 'label1', required: true, value: 'value', type: "elemental"}});
             });
-
-            // Properties
-            // ----------
-            test("...prop: `Elemental.id`...", function () {
+            //Elemental.id
+            test("`id` prop...", function () {
                 var e= new Elemental();
                 deepEqual(e.id, e._id);
 
@@ -516,8 +482,8 @@ define(['qunit', 'elements'],
 
                 throws(function() {e.id = 'ord';}, ValueError);
             });
-
-            test("...prop: `Elemental.type`...", function () {
+            // Elemental.type
+            test("`type` prop...", function () {
                 var e = new Elemental();
                 deepEqual(e.type, e._type);
                 deepEqual(e.type, 'elemental');
@@ -525,7 +491,8 @@ define(['qunit', 'elements'],
                 throws(function() { e.type = 'hi'; }, ValueError);
                 deepEqual(e.type, 'elemental');
             });
-            test("...prop: `Elemental.label`...", function () {
+            // Elemental.label
+            test("`label` prop...", function () {
                 var e = new Elemental();
                 deepEqual(e.label, e._label);
                 deepEqual(e.label, undefined);
@@ -544,7 +511,8 @@ define(['qunit', 'elements'],
                 deepEqual(e.label, '1234 in label.');
                 deepEqual(e._label, '{value} in label.');
             });
-            test("...prop: `Elemental.value`...", function () {
+            // Elemental.value
+            test("`value` prop...", function () {
                 var e = new Elemental();
                 notDeepEqual(e.value, e._value);
                 deepEqual(e.value, null);
@@ -563,7 +531,8 @@ define(['qunit', 'elements'],
                 deepEqual(e.value, '1234');
                 deepEqual(e._value, '1234');
             });
-            test("...prop: `Elemental.show`..." , function () {
+            // Elemental.show
+            test("`show` prop..." , function () {
                 var e = new Elemental();
                 deepEqual(e.show, null);
                 deepEqual(e._show, undefined);
@@ -572,7 +541,8 @@ define(['qunit', 'elements'],
                 deepEqual(e.show, true);
                 deepEqual(e._show, true);
             });
-            test("...prop: `Elemental.required`..." , function () {
+            // Elemental.required
+            test("`required` prop..." , function () {
                 var e = new Elemental();
                 deepEqual(e.required, null);
                 deepEqual(e._required, undefined);
@@ -581,19 +551,17 @@ define(['qunit', 'elements'],
                 deepEqual(e.required, true);
                 deepEqual(e._required, true);
             });
-            test("...prop: `Elemental.collection`...", function () {
+            // Elemental.collection
+            test("`collection` prop...", function () {
                 var e = new Elemental();
                 deepEqual(e.collection, undefined);
-                var c = new PointCollection(),
+                var c = new Collection(),
                     e = new Elemental({collection: c});
                 deepEqual(e.collection, undefined);
                 deepEqual(e._collection, c);
             });
-
-
-            //      Public Methods
-            //      --------------
-            test("...pub method: `Elemental.addChild`...", function () {
+            // Elemental.addChild()
+            test("`addChild()`...", function () {
                 var e1 = new Elemental(),
                     e2 = new Elemental(),
                     g1 = new Elemental();
@@ -633,8 +601,8 @@ define(['qunit', 'elements'],
 
                 throws(function() { g1.addChild('nada'); }, ArgumentError);
             });
-
-            test("...pub method: `Elemental.delChild`...", function () {
+            // Elemental.delChild
+            test("`delChild()`...", function () {
                 var e1 = new Elemental(),
                     e2 = new Elemental(),
                     g1 = new Elemental({children: [e1, e2]}),
@@ -660,8 +628,8 @@ define(['qunit', 'elements'],
                 deepEqual(g2.children.length, 0);
                 deepEqual(e1.parents.length, 0);
             });
-
-            test("...pub method: `Elemental.addParent`...", function () {
+            // Elemental.addParent()
+            test("`addParent()`...", function () {
                 var e1 = new Elemental(),
                     e2 = new Elemental(),
                     g1 = new Elemental();
@@ -669,10 +637,9 @@ define(['qunit', 'elements'],
                 e1.addParent(g1);
                 deepEqual(e1.parents[0], g1);
                 deepEqual(g1.children[0], e1);
-
             });
-
-            test("...pub method: `Elemental.delParent`...", function () {
+            // Elemental.delParent()
+            test("`delParent()`...", function () {
                 var e1 = new Elemental(),
                     e2 = new Elemental(),
                     g1 = new Elemental();
@@ -685,12 +652,13 @@ define(['qunit', 'elements'],
                  deepEqual(e1.parents, []);
                  deepEqual(g1.children, []);
             });
-
-            test("...pub method: `Elemental.validate`...", function () {
+            // Elemental.validate()
+            test("`validate()`...", function () {
                 var e = new Elemental();
                 deepEqual(e.validate(), true);
             });
-            test("...pub method: `Elemental.evaluate`...", function () {
+            // Elemental.evaluate()
+            test("`evaluate()`...", function () {
                 var e = new Elemental();
                 deepEqual(e.evaluate('{value}===null'), true);
                 var e = new Elemental({value: 1234});
@@ -700,39 +668,38 @@ define(['qunit', 'elements'],
                 var e = new Elemental({value: true});
                 deepEqual(e.evaluate('{value}==True'), true);
             });
-            test("...pub method: `Elemental.toString`...", function () {
+            // Elemental.toString()
+            test("`toString()`...", function () {
                 var e = new Elemental();
                 deepEqual(e.toString(), 'Elemental('+e.id+')');
                 var e = new Elemental({id: 'Mine'});
                 deepEqual(e.toString(), 'Elemental(Mine)');
             });
-
-
-
-
-            test("...pub method: `Elemental.hasOwnProperty`...", function () {
+            // Elemental.hasOwnProperty()
+            test("`hasOwnProperty()`...", function () {
                 var e = new Elemental();
                 deepEqual(e.hasOwnProperty('value'), true);
                 deepEqual(e.hasOwnProperty('show'), true);
                 deepEqual(e.hasOwnProperty('foo'), false);
             });
-            test("...pub method: `Elemental.fromSchema`...", function () {
+            // Elemental.fromSchema()
+            test("`fromSchema()`...", function () {
                 var p = new Elemental();
                 throws(p.fromSchema, NotImplementedError);
             });
 
-
-
-
-            // Point...
-            // --------
-            test("Constructor: `Point`...", function () {
+            module("Point");
+            test("Construction...", function () {
                 var p = new Point();
                 deepEqual(p.type, 'point');
                 deepEqual(p._parents.toArray(), []);
                 deepEqual(p.groups, []);
             });
-            test("...priv method: `Point._distillProp`...", function () {
+
+            // Point._distillProp()
+            //   Testing again to...???
+            // Point._distillProp()
+            test("`_distillProp()`...", function () {
                 var g1 = new Group({value: 'foobers'}),
                     g2 = new Group({show: true}),
                     p1 = new Point({groups: [g1, g2], required: true});
@@ -749,29 +716,6 @@ define(['qunit', 'elements'],
                 deepEqual(p2._distillProp('value'), 'boobers');
                 deepEqual(p3._distillProp('value'), 'beep')
             });
-            /*
-            test("...priv method: `Point._addParent`...", function () {
-                var p = new Point(),
-                    g1 = new Group(),
-                    g2 = new Group();
-                p._addParent(g1);
-                deepEqual(p.groups.indexOf(g1), 0);
-                p._addParent(g2);
-                deepEqual(p.groups.indexOf(g2), 1);
-                deepEqual(p.groups.length, 2);
-                throws(function() { p._addParent(g1); }, ValueError);
-            });
-            test("...priv method: `Point._delParent...`", function () {
-                var g1 = new Group(),
-                    g2 = new Group(),
-                    p = new Point({groups: [g1, g2]});
-                p._delParent(g1);
-                deepEqual(p.groups[0], g2);
-                p._delParent(g2);
-                deepEqual(p.groups.length, 0);
-                throws(function() { p._delParent(g1); }, ValueError);
-            });
-            */
             test("...prop: `Point.show`..." , function () {
                 var g = new Group({show: true}),
                     p = new Point({groups: [g]});
@@ -910,7 +854,7 @@ define(['qunit', 'elements'],
             });
 */
 
-            // Int...
+            module("Int");
             // ------
             test('Constructor: `Int`...', function () {
                 var i = new Int();
@@ -1022,7 +966,7 @@ define(['qunit', 'elements'],
                 throws(i.validate, Invalid);
             });
 
-            // Str...
+            module("Str");
             // ------
             test('Constructor: `Str`...', function () {
                 var s = new Str();
@@ -1134,7 +1078,7 @@ define(['qunit', 'elements'],
                 throws(s.validate, Invalid);
             });
 
-            // Float...
+            module("Float");
             // ------
             test('Constructor: `Float`...', function () {
                 var f = new Float();
@@ -1247,7 +1191,7 @@ define(['qunit', 'elements'],
                 throws(f.validate, Invalid);
             });
 
-            // Bool...
+            module("Bool");
             // ------
             test('Constructor: `Bool`...', function () {
                 var b = new Bool();
@@ -1351,33 +1295,7 @@ define(['qunit', 'elements'],
                 throws(b.validate, Invalid);
             });
 
-            // List...
-            // ------
-            test('Constructor: `List`...', function () {
-
-            });
-            test("...priv method: `List._parseDef`...", function () {
-
-            });
-            test("...priv method: `List._getProps'...", function () {
-
-            });
-            test("...prop: `List.value`...", function () {
-
-            });
-            test('...pub method: `List._setValue`...', function () {
-
-            });
-            test("...pub method: `List.toSchema`...", function () {
-
-            });
-            test("...pub method: `List.validate`...", function () {
-
-            });
-
-
-
-            // Group...
+            module("Group");
             // --------
             test("Constructor: `Group`...", function () {
                 var g1 = new Group();
@@ -1429,20 +1347,21 @@ define(['qunit', 'elements'],
                 // `toSchema`
                 var g1 = new Group();
                 deepEqual(g1.toSchema(), {
-                    id: g1.id,
-                    _required: false,
-                    _show: false,
-                    show: false,
-                    required: false,
-                    radio: false,
-                    type: 'group'});
+                    "_id": g1._id,
+                    "_required": false,
+                    "_show": false,
+                    "_type": "group",
+                    "radio": false
+                });
             });
             test("...pub method: `Group.toRender`...", function () {
                 var g1 = new Group();
                 deepEqual(g1.toRender(), []);
             });
+            /*
             test("...pub method: `Group.toDef`...", function () {
             });
+            */
             test("...pub method: `Group.validate`...", function () {
                 var g1 = new Group();
                 deepEqual(g1.validate(), undefined);
@@ -1463,31 +1382,76 @@ define(['qunit', 'elements'],
                 deepEqual(p1.groups.length, 0);
                 throws(function () {g1.delPoint(p1)}, ValueError);
             });
-            test('Test `PointCollection` class...', function () {
-                var c = new PointCollection();
-                deepEqual(c.name, '');
-                deepEqual(c.objects, {});
-                deepEqual(c.collections, {});
-                deepEqual(c.order, []);
-                deepEqual(c._lockable, false);
-                deepEqual(c._locked, false);
-
-                var c = new PointCollection({
-                    id: 'c1',
-                    name: '',
-                    lockable: true,
-                    locked: true
-                });
-            });
-
 
             module('Elemental-Backbone');
 
-            test('bmSetupProp', function () {
-                
+            test('modelHookProp', function () {
+                var obj = new Backbone.Model;
+                // Hook before setting prop.
+                modelHookProp.call(obj, '_test')
+                obj._test = 123;
+                deepEqual(obj.get('_test'), 123);
+
+                var obj = new Backbone.Model;
+                obj._test = '123';
+                // Hook after setting prop.
+                modelHookProp.call(obj, '_test');
+                deepEqual(obj._test, '123');
+                deepEqual(obj.get('_test'), '123');
+                obj._test = 123;
+                deepEqual(obj._test, 123);
+                deepEqual(obj.get('_test'), 123);
+
+                // Let's check up on Array/ElementalArray handling.
+                var obj = new Backbone.Model,
+                    e1 = new Elemental,
+                    e2 = new Elemental;
+                modelHookProp.call(obj, '_test');
+                obj._test = new ElementalArray();
+                ok(obj._test instanceof ElementalArray);
+                ok(obj.get('_test') instanceof Array);
+                obj._test.add(e1);
+                deepEqual(obj._test.toArray(), [e1]);
+                deepEqual(obj.get('_test'), [e1._id]);
+                obj._test.add(e2);
+                deepEqual(obj._test.toArray(), [e1, e2]);
+                deepEqual(obj.get('_test'), [e1._id, e2._id]);
             });
 
+            test('resetProp', function () {
+                var obj = new Backbone.Model;
 
+                // Setup simple prop to get/set from Model.
+                Object.defineProperty(obj, '_test', {
+                    enumerable: true,
+                    configurable: true,
+                    writeable: false,
+                    get: function () { return this.get('_test'); },
+                    set: function (val) { this.set('_test', val); }
+                });
+                obj.set('_test', null)
+                deepEqual(obj._test, null);
+                obj._test = true;
+                deepEqual(obj.get('_test'), true);
+
+                resetProp.call(obj, '_test');
+                deepEqual(obj._test, true);
+
+                obj._test = false;
+                deepEqual(obj._test, false);
+                deepEqual(obj.get('_test'), undefined);
+            });
+            
+            test('mixElementalModel()', function () {
+                var e1 = new Elemental(),
+                    e2 = new Elemental(),
+                    e3 = new Elemental(),
+                    em1 = mixElementalModel(e1);
+
+                deepEqual(e1.id, em1.id);
+                deepEqual(e1._id, em1._id);
+                deepEqual(e1._id, em1.get('_id'));
+            });
         }
     }
 });
